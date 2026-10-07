@@ -4,6 +4,9 @@ import pandas as pd
 import streamlit as st
 import plotly.graph_objects as go
 import plotly.express as px
+import streamlit.components.v1 as components
+
+from app.arena import build_arena_payload, render_arena_html
 
 DATA_DIR = Path(__file__).resolve().parents[1] / "data"
 
@@ -288,6 +291,10 @@ rick_html = f"""
 </div>
 """
 st.markdown(rick_html, unsafe_allow_html=True)
+
+# === GAME ARENA ===
+st.markdown("<h2>🕹️ SIMULATION ARENA</h2>", unsafe_allow_html=True)
+components.html(render_arena_html(build_arena_payload(df), rick_quote), height=700)
 
 st.markdown("---")
 
