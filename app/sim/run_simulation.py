@@ -23,7 +23,12 @@ from app.sim.utils import DATA_DIR, save_json, timestamp
 log = logging.getLogger(__name__)
 
 
-def run_once(etsy_mode: bool = False, real: bool = False, draft_only: bool = False) -> str:
+def run_once(
+    etsy_mode: bool = False,
+    real: bool = False,
+    draft_only: bool = False,
+    require_real: bool = False,
+) -> str:
     configure_etsy_logging(DATA_DIR / "etsy_api.log")
     etsy_connector = EtsyConnector.from_environment() if etsy_mode else None
     if etsy_connector:
@@ -65,19 +70,30 @@ def run_once(etsy_mode: bool = False, real: bool = False, draft_only: bool = Fal
     payload = to_serializable(designs, results)
     payload["manager"] = manager.report(designs, results)
 
+    listings = []
+    failed_real_listings = []
     if real or draft_only:
         from app.marketplace.adapter import get_adapter
 
         adapter = get_adapter("etsy", draft_only=draft_only)
-        listings = []
         for d in designs:
             if d.approved:
                 info = adapter.list_design(d, real=real)
                 listings.append({"design_id": d.design_id, **info})
+                if require_real and info["mode"] != "real":
+                    failed_real_listings.append(d.design_id)
                 log.info("Listing %s: %s %s (%s)", d.design_id, info["mode"], info["listing_id"], info["status"])
         payload["marketplace_listings"] = listings
 
     path = save_json(payload, f"run_{timestamp()}.json")
+    if require_real:
+        if not listings:
+            raise RuntimeError("No approved designs were available for real Etsy listings.")
+        if failed_real_listings:
+            raise RuntimeError(
+                "Real Etsy listing failed for design(s): "
+                + ", ".join(failed_real_listings)
+            )
     return str(path)
 
 
@@ -93,10 +109,15 @@ def run_until_revenue_goal(
     total_sales = sales_connector.get_total_sales_usd()
     latest_run = None
     while total_sales < revenue_goal:
-        latest_run = run_once(etsy_mode=etsy_mode, real=True)
-        print(f"Live Etsy sales: ${total_sales:,.2f} / ${revenue_goal:,.2f}")
-        time.sleep(poll_interval)
+        latest_run = run_once(
+            etsy_mode=etsy_mode,
+            real=True,
+            require_real=True,
+        )
         total_sales = sales_connector.get_total_sales_usd()
+        print(f"Live Etsy sales: ${total_sales:,.2f} / ${revenue_goal:,.2f}")
+        if total_sales < revenue_goal:
+            time.sleep(poll_interval)
 
     print(f"Revenue goal reached: ${total_sales:,.2f} / ${revenue_goal:,.2f}")
     return latest_run or ""

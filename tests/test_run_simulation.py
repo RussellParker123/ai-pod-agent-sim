@@ -1,51 +1,54 @@
+import unittest
 from unittest.mock import patch
 
 from app.sim import run_simulation
 
 
-class SalesConnector:
-    def __init__(self):
-        self.sales = 0
+class RevenueGoalTests(unittest.TestCase):
+    class SalesConnector:
+        def __init__(self):
+            self.sales = 0
 
-    def get_total_sales_usd(self):
-        return self.sales
+        def get_total_sales_usd(self):
+            return self.sales
 
+    def test_revenue_goal_stops_when_live_sales_reach_target(self):
+        connector = self.SalesConnector()
+        runs = []
 
-def test_revenue_goal_stops_when_live_sales_reach_target(monkeypatch):
-    connector = SalesConnector()
-    runs = []
+        def run_once(**kwargs):
+            runs.append(kwargs)
+            connector.sales = 100
+            return "latest-run.json"
 
-    monkeypatch.setattr(
-        run_simulation.EtsyConnector,
-        "from_environment",
-        lambda: connector,
-    )
+        with patch.object(
+            run_simulation.EtsyConnector,
+            "from_environment",
+            return_value=connector,
+        ), patch.object(
+            run_simulation,
+            "run_once",
+            side_effect=run_once,
+        ), patch.object(run_simulation.time, "sleep"):
+            latest_run = run_simulation.run_until_revenue_goal(100, 60)
 
-    def run_once(**kwargs):
-        runs.append(kwargs)
+        self.assertEqual(latest_run, "latest-run.json")
+        self.assertEqual(
+            runs,
+            [{"etsy_mode": False, "real": True, "require_real": True}],
+        )
+
+    def test_revenue_goal_does_not_list_if_already_met(self):
+        connector = self.SalesConnector()
         connector.sales = 100
-        return "latest-run.json"
 
-    monkeypatch.setattr(run_simulation, "run_once", run_once)
-    with patch.object(run_simulation.time, "sleep"):
-        latest_run = run_simulation.run_until_revenue_goal(100, 60)
-
-    assert latest_run == "latest-run.json"
-    assert runs == [{"etsy_mode": False, "real": True}]
-
-
-def test_revenue_goal_does_not_list_if_already_met(monkeypatch):
-    connector = SalesConnector()
-    connector.sales = 100
-    monkeypatch.setattr(
-        run_simulation.EtsyConnector,
-        "from_environment",
-        lambda: connector,
-    )
-    monkeypatch.setattr(
-        run_simulation,
-        "run_once",
-        lambda **kwargs: (_ for _ in ()).throw(AssertionError("unexpected listing")),
-    )
-
-    assert run_simulation.run_until_revenue_goal(100, 60) == ""
+        with patch.object(
+            run_simulation.EtsyConnector,
+            "from_environment",
+            return_value=connector,
+        ), patch.object(
+            run_simulation,
+            "run_once",
+            side_effect=AssertionError("unexpected listing"),
+        ):
+            self.assertEqual(run_simulation.run_until_revenue_goal(100, 60), "")

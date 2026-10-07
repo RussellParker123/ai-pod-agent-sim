@@ -5,6 +5,7 @@ import logging
 import os
 from pathlib import Path
 import time
+from decimal import Decimal
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
@@ -223,7 +224,7 @@ class EtsyConnector:
 
     def get_total_sales_usd(self):
         """Return total USD sales from paid, non-cancelled shop receipts."""
-        total = 0.0
+        total = Decimal("0")
         offset = 0
         limit = 100
         while True:
@@ -239,7 +240,7 @@ class EtsyConnector:
                 if amount.get("currency_code") != "USD":
                     continue
                 divisor = amount.get("divisor") or 1
-                total += amount.get("amount", 0) / divisor
+                total += Decimal(str(amount.get("amount", 0))) / Decimal(str(divisor))
             if len(receipts) < limit:
-                return total
+                return float(total)
             offset += limit
