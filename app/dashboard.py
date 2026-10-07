@@ -29,15 +29,15 @@ st.markdown("""
     
     /* Neon glow effect */
     h1, h2, h3 {
-        color: #00ff41;
-        text-shadow: 0 0 10px #00ff41, 0 0 20px #00ff41;
+        color: #8cffaa;
+        text-shadow: 0 0 8px rgba(0, 255, 65, 0.35);
         font-weight: bold;
     }
     
     /* Dark cyberpunk background */
     .main {
         background: linear-gradient(135deg, #0a0e27 0%, #1a1a3e 100%);
-        color: #00ff41;
+        color: #e7f0ff;
     }
     
     /* Metrics cards */
@@ -234,9 +234,40 @@ selected = st.sidebar.selectbox("📊 SELECT RUN", [f.name for f in files], inde
 with open(DATA_DIR / selected, "r", encoding="utf-8") as f:
     payload = json.load(f)
 
-designs_df = pd.DataFrame(payload["designs"])
-results_df = pd.DataFrame(payload["results"])
+designs_df = pd.DataFrame(payload.get("designs", []))
+results_df = pd.DataFrame(payload.get("results", []))
+if designs_df.empty:
+    st.info("This simulation run contains no designs.")
+    st.stop()
+if "design_id" not in designs_df:
+    st.error("This simulation run is missing design IDs.")
+    st.stop()
+if not results_df.empty and "design_id" not in results_df:
+    st.error("This simulation run contains results without design IDs.")
+    st.stop()
+if "design_id" not in results_df:
+    results_df["design_id"] = pd.Series(dtype="object")
+
 df = designs_df.merge(results_df, on="design_id", how="left")
+for column in (
+    "trend_score", "price", "views", "clicks", "ctr", "orders", "revenue", "profit"
+):
+    if column not in df:
+        df[column] = 0
+    df[column] = pd.to_numeric(df[column], errors="coerce").fillna(0)
+for column, default in (
+    ("approved", False),
+    ("compliance_status", "pending"),
+    ("product_type", "Unknown"),
+    ("niche", "Unknown"),
+    ("prompt", ""),
+    ("compliance_notes", ""),
+):
+    if column not in df:
+        df[column] = default
+    else:
+        df[column] = df[column].fillna(default)
+df["approved"] = df["approved"].astype(bool)
 
 # === CALCULATE STATS ===
 total_designs = len(df)
@@ -525,7 +556,13 @@ st.markdown("---")
 st.markdown("<h3>🏅 NICHE LEADERBOARD</h3>", unsafe_allow_html=True)
 
 metrics_by_niche = df.groupby("niche", as_index=False)[["views", "clicks", "orders", "revenue", "profit"]].sum()
-metrics_by_niche["ctr"] = (metrics_by_niche["clicks"] / metrics_by_niche["views"] * 100).round(2)
+metrics_by_niche["ctr"] = (
+    metrics_by_niche["clicks"]
+    .div(metrics_by_niche["views"].where(metrics_by_niche["views"] != 0))
+    .fillna(0)
+    .mul(100)
+    .round(2)
+)
 metrics_by_niche["rank"] = metrics_by_niche["profit"].rank(ascending=False, method="min").astype(int)
 metrics_by_niche = metrics_by_niche.sort_values("rank")
 
@@ -554,6 +591,25 @@ st.dataframe(top_designs, use_container_width=True, hide_index=True)
 st.markdown("---")
 st.markdown("<h3>🎮 FULL DESIGN REGISTRY</h3>", unsafe_allow_html=True)
 
+filters = st.columns([2, 1, 1])
+search = filters[0].text_input("Search designs", placeholder="ID, niche, product, or compliance note")
+niches = ["All niches", *sorted(df["niche"].astype(str).unique())]
+selected_niche = filters[1].selectbox("Niche", niches)
+statuses = ["All statuses", *sorted(df["compliance_status"].astype(str).unique())]
+selected_status = filters[2].selectbox("Compliance", statuses)
+
+filtered_df = df.copy()
+if search:
+    search_columns = ["design_id", "niche", "product_type", "compliance_status", "compliance_notes"]
+    matches = filtered_df[search_columns].astype(str).apply(
+        lambda column: column.str.contains(search, case=False, regex=False)
+    ).any(axis=1)
+    filtered_df = filtered_df[matches]
+if selected_niche != "All niches":
+    filtered_df = filtered_df[filtered_df["niche"].astype(str) == selected_niche]
+if selected_status != "All statuses":
+    filtered_df = filtered_df[filtered_df["compliance_status"].astype(str) == selected_status]
+
 show_cols = [
     "design_id",
     "niche",
@@ -569,10 +625,51 @@ show_cols = [
     "revenue",
     "profit",
 ]
-display_df = df[show_cols].copy()
+display_df = filtered_df[show_cols].copy()
 display_df.columns = ["🎨 ID", "📍 Niche", "📈 Score", "🛡️ Status", "🎁 Product", "💲 $", "✅", "👁️", "🖱️", "CTR", "📦", "💵", "🎯"]
 
 st.dataframe(display_df, use_container_width=True, hide_index=True)
+
+if filtered_df.empty:
+    st.info("No designs match these filters.")
+else:
+    selected_design_id = st.selectbox(
+        "Inspect design",
+        filtered_df["design_id"].astype(str).tolist(),
+        key=f"inspect_{selected}",
+    )
+    design = filtered_df[filtered_df["design_id"].astype(str) == selected_design_id].iloc[0]
+    manager = payload.get("manager", {})
+    manager_score = manager.get("design_scores", {}).get(selected_design_id, {})
+
+    st.markdown("#### Design detail")
+    detail_cols = st.columns(4)
+    detail_cols[0].metric("Manager score", f"{manager_score.get('score', '—')}")
+    detail_cols[1].metric("Decision", manager_score.get("manager_decision", "Not scored"))
+    detail_cols[2].metric("Compliance", str(design["compliance_status"]).title())
+    detail_cols[3].metric("Profit", f"${design['profit']:,.2f}")
+
+    with st.container(border=True):
+        prompt_col, review_col = st.columns(2)
+        with prompt_col:
+            st.markdown("**Design brief**")
+            st.write(design["prompt"] or "No prompt recorded for this design.")
+            st.caption(f"{design['product_type']} · {design['niche']} · Trend score {design['trend_score']:.2f}")
+        with review_col:
+            st.markdown("**Agent review**")
+            st.write(design["compliance_notes"] or "No compliance notes recorded.")
+            if manager_score.get("coach"):
+                st.info(manager_score["coach"])
+            components = manager_score.get("components", {})
+            if components:
+                st.markdown("**Score breakdown**")
+                st.dataframe(
+                    pd.DataFrame(
+                        [{"Factor": name.title(), "Score": score} for name, score in components.items()]
+                    ),
+                    use_container_width=True,
+                    hide_index=True,
+                )
 
 # === GAME TIPS ===
 st.markdown("---")
