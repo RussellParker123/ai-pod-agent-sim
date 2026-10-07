@@ -220,3 +220,26 @@ class EtsyConnector:
                 }
             )
         return inventory
+
+    def get_total_sales_usd(self):
+        """Return total USD sales from paid, non-cancelled shop receipts."""
+        total = 0.0
+        offset = 0
+        limit = 100
+        while True:
+            response = self._get(
+                f"shops/{self.shop_id}/receipts",
+                {"limit": limit, "offset": offset},
+            )
+            receipts = response.get("results", [])
+            for receipt in receipts:
+                if not receipt.get("is_paid") or receipt.get("is_cancelled"):
+                    continue
+                amount = receipt.get("grandtotal") or {}
+                if amount.get("currency_code") != "USD":
+                    continue
+                divisor = amount.get("divisor") or 1
+                total += amount.get("amount", 0) / divisor
+            if len(receipts) < limit:
+                return total
+            offset += limit

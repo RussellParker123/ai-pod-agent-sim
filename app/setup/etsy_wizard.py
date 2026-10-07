@@ -22,7 +22,7 @@ SIGNUP_URL = "https://www.etsy.com/sell"
 DEV_URL = "https://www.etsy.com/developers"
 AUTH_URL = "https://www.etsy.com/oauth/connect"
 REDIRECT_URI = "http://localhost:3003/oauth/redirect"
-SCOPES = "listings_r listings_w listings_d shops_r"
+SCOPES = "listings_r listings_w listings_d shops_r transactions_r"
 
 OK, BAD, WARN = "[green]✓[/green]", "[red]✗[/red]", "[yellow]![/yellow]"
 

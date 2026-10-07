@@ -1,5 +1,6 @@
 import argparse
 import logging
+import time
 
 from app.connectors.etsy_connector import (
     EtsyConnector,
@@ -80,6 +81,27 @@ def run_once(etsy_mode: bool = False, real: bool = False, draft_only: bool = Fal
     return str(path)
 
 
+def run_until_revenue_goal(
+    revenue_goal: float,
+    poll_interval: int,
+    etsy_mode: bool = False,
+) -> str:
+    sales_connector = EtsyConnector.from_environment()
+    if not sales_connector:
+        raise ValueError("Live revenue tracking requires Etsy credentials.")
+
+    total_sales = sales_connector.get_total_sales_usd()
+    latest_run = None
+    while total_sales < revenue_goal:
+        latest_run = run_once(etsy_mode=etsy_mode, real=True)
+        print(f"Live Etsy sales: ${total_sales:,.2f} / ${revenue_goal:,.2f}")
+        time.sleep(poll_interval)
+        total_sales = sales_connector.get_total_sales_usd()
+
+    print(f"Revenue goal reached: ${total_sales:,.2f} / ${revenue_goal:,.2f}")
+    return latest_run or ""
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Run the AI POD agent simulation.")
     parser.add_argument(
@@ -90,14 +112,45 @@ if __name__ == "__main__":
     parser.add_argument("--real", action="store_true", help="publish approved designs to Etsy (default: simulate)")
     parser.add_argument("--draft-only", action="store_true", help="save listings as drafts instead of active")
     parser.add_argument("--yes", action="store_true", help="skip the confirmation prompt for --real")
+    parser.add_argument(
+        "--revenue-goal",
+        type=float,
+        help="keep listing approved designs until paid Etsy sales reach this USD amount (requires --real)",
+    )
+    parser.add_argument(
+        "--cycle-delay-seconds",
+        type=int,
+        default=86400,
+        help="seconds between listing batches while pursuing a revenue goal (default: 86400)",
+    )
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
 
+    if args.revenue_goal is not None and args.revenue_goal <= 0:
+        parser.error("--revenue-goal must be greater than zero")
+    if args.cycle_delay_seconds <= 0:
+        parser.error("--cycle-delay-seconds must be greater than zero")
+    if args.revenue_goal is not None and not args.real:
+        parser.error("--revenue-goal requires --real")
+    if args.revenue_goal is not None and args.draft_only:
+        parser.error("--revenue-goal cannot be used with --draft-only")
+
     real = args.real
     if real and not args.yes:
-        kind = "DRAFT" if args.draft_only else "ACTIVE"
+        kind = (
+            "RECURRING ACTIVE"
+            if args.revenue_goal is not None
+            else "DRAFT" if args.draft_only else "ACTIVE"
+        )
         if input(f"Create real {kind} Etsy listings for approved designs? [y/N] ").strip().lower() != "y":
             print("Not confirmed; running in simulation mode.")
             real = False
-    p = run_once(etsy_mode=args.etsy_mode, real=real, draft_only=args.draft_only)
+    if args.revenue_goal is not None and real:
+        p = run_until_revenue_goal(
+            args.revenue_goal,
+            args.cycle_delay_seconds,
+            etsy_mode=args.etsy_mode,
+        )
+    else:
+        p = run_once(etsy_mode=args.etsy_mode, real=real, draft_only=args.draft_only)
     print(f"Simulation complete. Output: {p}")
