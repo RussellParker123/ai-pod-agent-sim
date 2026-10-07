@@ -1,4 +1,4 @@
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass, asdict, field
 from typing import List, Dict
 import logging
 import random
@@ -21,6 +21,9 @@ class Design:
     unit_cost: float = 0.0
     price: float = 0.0
     approved: bool = False
+    design_concept: str = ""
+    market_research: Dict = field(default_factory=dict)
+    product_notes: str = ""
 
 
 @dataclass
@@ -65,6 +68,10 @@ def trend_agent(niches: List[str], k: int = 12, etsy_connector=None) -> List[Des
                                 design_id=f"D{i+1:03}",
                                 niche=niche,
                                 trend_score=round(score, 3),
+                                market_research={
+                                    "source": "shop_active_listing_tags",
+                                    "tag_frequency": count,
+                                },
                             )
                         )
                 if designs:
@@ -85,10 +92,72 @@ def trend_agent(niches: List[str], k: int = 12, etsy_connector=None) -> List[Des
     return picks
 
 
+def market_research_agent(designs: List[Design]) -> Dict:
+    sources = set()
+    signals = []
+    for design in designs:
+        research = design.market_research
+        if research.get("source") == "shop_active_listing_tags":
+            source = research["source"]
+            frequency = research.get("tag_frequency", 0)
+            demand_signal = round(
+                frequency / max(
+                    (item.market_research.get("tag_frequency", 0) for item in designs),
+                    default=0,
+                ),
+                3,
+            ) if frequency else 0.0
+        else:
+            source = "simulated"
+            demand_signal = design.trend_score
+            research = {
+                "source": source,
+                "demand_signal": demand_signal,
+                "keyword": design.niche,
+            }
+            design.market_research = research
+        research["demand_signal"] = demand_signal
+        research["keyword"] = design.niche
+        sources.add(source)
+        signals.append(
+            {
+                "design_id": design.design_id,
+                "niche": design.niche,
+                **research,
+            }
+        )
+    return {
+        "source": next(iter(sources)) if len(sources) == 1 else "mixed",
+        "signals": signals,
+        "limitations": (
+            "Etsy signals reflect this shop's active-listing tag frequency, "
+            "not marketplace-wide searches or competitor demand."
+            if "shop_active_listing_tags" in sources
+            else "Market signals are simulated estimates, not live marketplace data."
+        ),
+    }
+
+
+def design_agent(designs: List[Design]) -> None:
+    design_angles = (
+        "a bold emblem with a small hand-drawn accent",
+        "a clean geometric motif with a playful hidden detail",
+        "a vintage-inspired badge using original shapes",
+        "a calm, minimal illustration with generous negative space",
+    )
+    for index, design in enumerate(designs):
+        related_term = design.market_research.get("keyword", design.niche)
+        design.design_concept = (
+            f"{design.niche.title()} original artwork: {design_angles[index % len(design_angles)]}; "
+            f"audience keyword: {related_term}"
+        )
+
+
 def prompt_agent(designs: List[Design]) -> None:
     for d in designs:
+        concept = d.design_concept or f"{d.niche} themed artwork"
         d.prompt = (
-            f"Original {d.niche} themed vector-style artwork, minimal, high contrast, "
+            f"{concept}, original vector-style artwork, minimal, high contrast, "
             f"commercial-friendly, no logos, no characters, no trademark terms"
         )
 
@@ -158,6 +227,29 @@ def mockup_agent(designs: List[Design], product_types=("mug", "tshirt", "tote"))
         d.product_type = random.choice(product_types)
         base_costs = {"mug": 6.5, "tshirt": 9.0, "tote": 7.0}
         d.unit_cost = base_costs[d.product_type]
+
+
+def sweater_hoodie_agent(designs: List[Design], share: float = 0.25) -> None:
+    """Route the strongest concepts to a sweater or hoodie product line."""
+    if not designs:
+        return
+    if not 0 <= share <= 1:
+        raise ValueError("share must be between 0 and 1")
+
+    apparel_designs = sorted(
+        designs, key=lambda design: design.trend_score, reverse=True
+    )[:max(1, round(len(designs) * share))]
+    apparel_costs = {"hoodie": 24.0, "sweater": 18.0}
+    for index, design in enumerate(apparel_designs):
+        product_type = "hoodie" if index % 2 == 0 else "sweater"
+        design.product_type = product_type
+        design.unit_cost = apparel_costs[product_type]
+        garment = "front-chest" if product_type == "hoodie" else "center-chest"
+        design.product_notes = (
+            f"Optimized for a {product_type}: use a bold {garment} print "
+            "with clear shapes that remain legible on fabric."
+        )
+        design.prompt = f"{design.prompt}, {design.product_notes}"
 
 
 def pricing_agent(designs: List[Design], target_margin: float = 0.4) -> None:

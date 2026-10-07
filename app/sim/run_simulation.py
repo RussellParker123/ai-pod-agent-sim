@@ -7,10 +7,13 @@ from app.connectors.etsy_connector import (
 )
 from app.sim.agents import (
     trend_agent,
+    market_research_agent,
+    design_agent,
     prompt_agent,
     image_agent,
     compliance_agent,
     mockup_agent,
+    sweater_hoodie_agent,
     pricing_agent,
     listing_simulator,
     to_serializable,
@@ -47,6 +50,8 @@ def run_once(etsy_mode: bool = False, real: bool = False, draft_only: bool = Fal
     designs = trend_agent(niches=niches, k=24, etsy_connector=etsy_connector)
     designs = manager.review_trends(designs)
 
+    market_research = market_research_agent(designs)
+    design_agent(designs)
     prompt_agent(designs)
     image_agent(designs)
     compliance_check = lambda items: compliance_agent(
@@ -56,12 +61,14 @@ def run_once(etsy_mode: bool = False, real: bool = False, draft_only: bool = Fal
     manager.review_compliance(designs, recheck=compliance_check)
 
     mockup_agent(designs)
+    sweater_hoodie_agent(designs)
     pricing_agent(designs, target_margin=0.42)
     manager.review_pricing(designs)
     manager.score_and_decide(designs)  # GREENLIGHT / HOLD / BLOCK + batch status
 
     results = listing_simulator(designs)
     payload = to_serializable(designs, results)
+    payload["market_research"] = market_research
     payload["manager"] = manager.report(designs, results)
 
     if real or draft_only:
