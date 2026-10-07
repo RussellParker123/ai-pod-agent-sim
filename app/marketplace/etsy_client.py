@@ -83,7 +83,7 @@ class EtsyClient:
 
     def _headers(self) -> Dict[str, str]:
         key = f"{self.api_key}:{self.api_secret}" if self.api_secret else self.api_key
-        return {"x-api-key": key, "Authorization": f"******"}
+        return {"x-api-key": key, "Authorization": "Bearer " + self.access_token}
 
     # --- HTTP with exponential backoff ----------------------------------
     def _request(self, method: str, path: str, **kwargs) -> Dict[str, Any]:
