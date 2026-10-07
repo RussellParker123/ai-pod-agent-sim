@@ -61,6 +61,48 @@ st.markdown("""
         box-shadow: 0 0 15px rgba(0, 255, 65, 0.6) !important;
     }
     
+    /* Rick Manager Container */
+    .rick-manager {
+        background: linear-gradient(135deg, #2d1b4e 0%, #1a2d4e 100%);
+        border: 4px solid #ff6b9d;
+        border-radius: 16px;
+        padding: 30px;
+        margin: 20px 0;
+        text-align: center;
+        box-shadow: 0 0 30px rgba(255, 107, 157, 0.5);
+    }
+    
+    .rick-sprite {
+        font-size: 80px;
+        margin: 10px 0;
+        animation: rickPulse 2s infinite;
+    }
+    
+    .rick-title {
+        color: #ff6b9d;
+        font-size: 24px;
+        font-weight: bold;
+        text-shadow: 0 0 10px #ff6b9d;
+    }
+    
+    .rick-quote {
+        color: #00ff41;
+        font-size: 14px;
+        font-style: italic;
+        margin: 10px 0;
+        min-height: 40px;
+    }
+    
+    .rick-stats {
+        background: linear-gradient(135deg, #1a1a3e 0%, #2d1b4e 100%);
+        border: 2px solid #ff6b9d;
+        border-radius: 8px;
+        padding: 15px;
+        margin-top: 15px;
+        color: #00ccff;
+        font-size: 13px;
+    }
+    
     /* Achievement badge */
     .achievement {
         background: linear-gradient(135deg, #ff6b00 0%, #ff8c00 100%);
@@ -81,6 +123,71 @@ st.markdown("""
         padding: 16px;
         margin: 8px 0;
         box-shadow: 0 0 10px rgba(0, 204, 255, 0.3);
+    }
+    
+    /* Agent Character Card */
+    .agent-card {
+        background: linear-gradient(135deg, #1a2d4e 0%, #2d1b4e 100%);
+        border: 3px solid #00ff41;
+        border-radius: 12px;
+        padding: 20px;
+        margin: 10px;
+        text-align: center;
+        box-shadow: 0 0 20px rgba(0, 255, 65, 0.4);
+        min-width: 140px;
+        display: inline-block;
+    }
+    
+    .agent-icon {
+        font-size: 48px;
+        margin: 10px 0;
+        animation: pulse 1.5s infinite;
+    }
+    
+    .agent-name {
+        color: #00ccff;
+        font-weight: bold;
+        font-size: 14px;
+        margin: 8px 0;
+    }
+    
+    .agent-role {
+        color: #00ff41;
+        font-size: 12px;
+        margin: 5px 0;
+    }
+    
+    .agent-stats {
+        color: #ffaa00;
+        font-size: 11px;
+        margin-top: 8px;
+    }
+    
+    .progress-bar {
+        background: #0a0e27;
+        border: 1px solid #00ff41;
+        height: 6px;
+        border-radius: 3px;
+        margin: 8px 0;
+        overflow: hidden;
+    }
+    
+    .progress-fill {
+        background: linear-gradient(90deg, #00ff41, #00ccff);
+        height: 100%;
+        border-radius: 3px;
+        box-shadow: 0 0 10px rgba(0, 255, 65, 0.6);
+    }
+    
+    @keyframes pulse {
+        0%, 100% { transform: scale(1); opacity: 1; }
+        50% { transform: scale(1.1); opacity: 0.8; }
+    }
+    
+    @keyframes rickPulse {
+        0%, 100% { transform: scale(1) rotate(0deg); }
+        25% { transform: scale(1.05) rotate(-2deg); }
+        75% { transform: scale(1.05) rotate(2deg); }
     }
     
     /* Dividers */
@@ -115,6 +222,151 @@ with open(DATA_DIR / selected, "r", encoding="utf-8") as f:
 designs_df = pd.DataFrame(payload["designs"])
 results_df = pd.DataFrame(payload["results"])
 df = designs_df.merge(results_df, on="design_id", how="left")
+
+# === CALCULATE STATS ===
+total_designs = len(df)
+approved = int(df["approved"].sum())
+flagged = int((df["compliance_status"] == "flagged").sum())
+passed = int((df["compliance_status"] == "pass").sum())
+total_revenue = df['revenue'].sum()
+total_profit = df['profit'].sum()
+approval_rate = (approved / total_designs * 100) if total_designs > 0 else 0
+
+# === RICK MANAGER (OVERSEER) ===
+st.markdown("---")
+
+# Generate Rick's quote based on performance
+rick_quotes = {
+    "excellent": [
+        "Wubba lubba dub dub! Now THAT'S a simulation! 🤢 *burp* Impressive.",
+        "Burp! Not bad, not bad at all. Your agents actually know what they're doing.",
+        "*burp* I've seen worse. Much worse. Like Morty-level worse.",
+    ],
+    "good": [
+        "Eh, I guess that's acceptable. *burp* Could be better though.",
+        "Look, it's functional. That's all I'm saying. *burp*",
+        "Not terrible. I mean, I've done better in my sleep. *burp*",
+    ],
+    "mediocre": [
+        "Aw geez, really? That's the best you could do? *burp*",
+        "*burp* I don't want to say I'm disappointed, but... actually, I do.",
+        "This is what happens when you rely on AGENTS, Morty— I mean, when you run simulations poorly.",
+    ],
+    "poor": [
+        "What is THIS?! *burp* Did Morty write this code? Ugh.",
+        "*burp* I've seen better performance from a PICKLE, and I was one.",
+        "Aw man, this is BAD. Like, really bad. We need to get schwifty with optimization.",
+    ]
+}
+
+if approval_rate >= 70:
+    rick_quote = rick_quotes["excellent"][hash(str(approved)) % len(rick_quotes["excellent"])]
+elif approval_rate >= 50:
+    rick_quote = rick_quotes["good"][hash(str(approved)) % len(rick_quotes["good"])]
+elif approval_rate >= 30:
+    rick_quote = rick_quotes["mediocre"][hash(str(approved)) % len(rick_quotes["mediocre"])]
+else:
+    rick_quote = rick_quotes["poor"][hash(str(approved)) % len(rick_quotes["poor"])]
+
+rick_html = f"""
+<div class="rick-manager">
+    <div class="rick-sprite">🫠</div>
+    <div class="rick-title">RICK SANCHEZ - SIMULATION OVERLORD</div>
+    <div class="rick-quote">"{rick_quote}"</div>
+    <div class="rick-stats">
+        <strong>Portal Gun Reading:</strong> {approval_rate:.1f}% Approval Rate | {total_profit:,.0f}$ Total Profit | {total_designs} Designs Processed
+    </div>
+</div>
+"""
+st.markdown(rick_html, unsafe_allow_html=True)
+
+st.markdown("---")
+
+# === AGENT CHARACTERS ===
+st.markdown("<h2>👾 RICK'S AGENT TEAM</h2>", unsafe_allow_html=True)
+st.markdown("""
+<div style='text-align: center; color: #00ff41; font-size: 12px; margin-bottom: 20px;'>
+Meet the misfits working under Rick's tyrannical management...
+</div>
+""", unsafe_allow_html=True)
+
+agents_info = [
+    {
+        "icon": "🎯",
+        "name": "TREND",
+        "role": "Trend Scout",
+        "stat": f"{total_designs} niches found",
+        "progress": 100,
+    },
+    {
+        "icon": "📝",
+        "name": "PROMPT",
+        "role": "Prompt Writer",
+        "stat": f"{total_designs} prompts written",
+        "progress": 100,
+    },
+    {
+        "icon": "🎨",
+        "name": "IMAGE",
+        "role": "Art Generator",
+        "stat": f"{total_designs} images created",
+        "progress": 100,
+    },
+    {
+        "icon": "🛡️",
+        "name": "COMPLIANCE",
+        "role": "Rule Enforcer",
+        "stat": f"{passed} pass / {flagged} flagged",
+        "progress": int((passed / total_designs * 100) if total_designs > 0 else 0),
+    },
+    {
+        "icon": "📦",
+        "name": "MOCKUP",
+        "role": "Product Designer",
+        "stat": f"{total_designs} mockups ready",
+        "progress": 100,
+    },
+    {
+        "icon": "💰",
+        "name": "PRICING",
+        "role": "Price Setter",
+        "stat": f"Avg ${df['price'].mean():.2f}",
+        "progress": 100,
+    },
+    {
+        "icon": "✅",
+        "name": "APPROVAL",
+        "role": "Gatekeeper",
+        "stat": f"{approved} approved",
+        "progress": int((approved / total_designs * 100) if total_designs > 0 else 0),
+    },
+    {
+        "icon": "📊",
+        "name": "SIMULATOR",
+        "role": "Market Oracle",
+        "stat": f"${df['profit'].sum():,.0f} profit",
+        "progress": 100,
+    },
+]
+
+# Display agents in a horizontal pipeline
+agents_html = '<div style="display: flex; flex-wrap: wrap; justify-content: center; gap: 5px;">'
+for agent in agents_info:
+    progress_pct = agent["progress"]
+    agents_html += f"""
+    <div class="agent-card">
+        <div class="agent-icon">{agent['icon']}</div>
+        <div class="agent-name">{agent['name']}</div>
+        <div class="agent-role">{agent['role']}</div>
+        <div class="progress-bar">
+            <div class="progress-fill" style="width: {progress_pct}%"></div>
+        </div>
+        <div class="agent-stats">{agent['stat']}</div>
+    </div>
+    """
+agents_html += '</div>'
+
+st.markdown(agents_html, unsafe_allow_html=True)
 
 # === GAME STATS ===
 st.markdown("---")
@@ -313,16 +565,16 @@ st.markdown("""
 <div style='background: linear-gradient(135deg, #1a2d4e 0%, #2d1b4e 100%); 
             border: 2px solid #00ccff; border-radius: 8px; padding: 16px; 
             box-shadow: 0 0 10px rgba(0, 204, 255, 0.3);'>
-<h4 style='color: #00ccff;'>💡 AGENT SURVIVAL TIPS</h4>
+<h4 style='color: #00ccff;'>💡 AGENT SURVIVAL TIPS (From Rick)</h4>
 <ul style='color: #00ff41;'>
-    <li>⚡ Higher trend scores = better marketplace performance</li>
-    <li>🛡️ Compliance checks prevent costly rejections</li>
-    <li>💰 Volume × Margin = Profit. Balance both!</li>
-    <li>🎯 CTR > 5% unlocks premium status</li>
-    <li>🔄 Run simulations multiple times to optimize agent strategies</li>
+    <li>⚡ Higher trend scores = better marketplace performance (obvious, even for Morty)</li>
+    <li>🛡️ Compliance checks prevent costly rejections (don't be an idiot)</li>
+    <li>💰 Volume × Margin = Profit. Balance both! (it's science, burp)</li>
+    <li>🎯 CTR > 5% unlocks premium status (get schwifty with marketing)</li>
+    <li>🔄 Run simulations multiple times to optimize (I didn't invent optimization for nothing)</li>
 </ul>
 </div>
 """, unsafe_allow_html=True)
 
 st.markdown("---")
-st.caption("🤖 AI POD Agent Simulation v1.0 | Multi-Agent Print-On-Demand Arena")
+st.caption("🤖 AI POD Agent Simulation v3.0 | Rick's Multi-Agent Print-On-Demand Arena | Burp")
