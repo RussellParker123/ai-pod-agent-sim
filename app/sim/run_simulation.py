@@ -133,8 +133,8 @@ def publish_reviewed_run(
         {"design_id": design["design_id"], **adapter.list_design(design, real=real)}
         for design in eligible
     ]
-    run_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
-    return str(run_path)
+    output_path = save_json(payload, f"published_{run_name}")
+    return str(output_path)
 
 
 if __name__ == "__main__":
@@ -161,6 +161,8 @@ if __name__ == "__main__":
             print("Not confirmed; running in simulation mode.")
             real = False
     if args.publish_run:
+        if args.real and not real:
+            raise SystemExit(0)
         if not (real or args.draft_only):
             parser.error("--publish-run requires --real or --draft-only")
         p = publish_reviewed_run(args.publish_run, real=real, draft_only=args.draft_only)

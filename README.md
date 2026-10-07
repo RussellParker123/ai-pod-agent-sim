@@ -57,6 +57,26 @@ listing tags and inactive listings are used only as similarity references.
 streamlit run app/dashboard.py
 ```
 
+## Team review and publishing
+
+Pipeline stages use configurable worker lists in `app/sim/team.py`. The default
+team assigns two workers to prompt, image, compliance, mockup, and pricing
+departments; stage work is distributed across those workers, and run JSON
+records the assignments and manager ID. Pass an `AgentTeam` with custom worker
+IDs to `run_once` to change the team.
+
+To publish a saved run, use the Review page to explicitly approve GREENLIGHT
+designs or force-approve HOLD designs. Compliance-blocked designs cannot be
+approved. Then publish the reviewed run with a confirmation prompt:
+
+```bash
+python -m app.sim.run_simulation --publish-run run_YYYYMMDD_HHMMSS.json --real
+```
+
+Only explicitly approved designs are sent to the marketplace adapter. The
+original run is preserved; publishing writes a separate `published_*.json`
+result file.
+
 ## Project structure
 
 - `app/sim/` core simulation modules and agent logic

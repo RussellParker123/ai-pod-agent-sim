@@ -6,7 +6,6 @@ from app.sim.agents import Design
 
 
 DEFAULT_WORKERS = {
-    "trend": ["trend-1", "trend-2"],
     "prompt": ["prompt-1", "prompt-2"],
     "image": ["image-1", "image-2"],
     "compliance": ["compliance-1", "compliance-2"],

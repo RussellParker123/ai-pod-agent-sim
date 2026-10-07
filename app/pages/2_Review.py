@@ -1,6 +1,7 @@
-"""Review page: see what the Manager passed and manually cancel / override.
+"""Review page: approve, cancel, or override manager decisions.
 
 Overrides are saved to data/overrides.json and never alter the original run file.
+- approve:        explicitly approve a GREENLIGHT design for publishing
 - cancel:         stop a design the manager passed (GREENLIGHT or HOLD)
 - force_approve:  push a HOLD design through. Compliance-blocked designs can NOT be forced.
 """
