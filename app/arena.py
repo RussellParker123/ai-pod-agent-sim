@@ -1,179 +1,219 @@
-"""Fallout Shelter-style game arena: agents walk between stations carrying designs."""
+"""Fallout Shelter-style simulation arena: layout data + self-contained canvas renderer."""
 import json
 
 STATIONS = [
-    ("Trend", "🎯", "Trend Lab", "finds trending niches"),
-    ("Prompt", "📝", "Prompt Workshop", "writes prompts"),
-    ("Image", "🎨", "Image Studio", "generates images"),
-    ("Compliance", "🛡️", "Compliance Office", "checks violations"),
-    ("Mockup", "📦", "Mockup Assembly", "selects products"),
-    ("Pricing", "💰", "Pricing Bureau", "sets prices"),
-    ("Approval", "✅", "Approval Gate", "approves designs"),
-    ("Simulator", "📊", "Market Simulator", "calculates results"),
+    {"key": "trend", "agent": "TREND", "icon": "🎯", "name": "Trend Lab", "desc": "finds trending niches"},
+    {"key": "prompt", "agent": "PROMPT", "icon": "📝", "name": "Prompt Workshop", "desc": "writes prompts"},
+    {"key": "image", "agent": "IMAGE", "icon": "🎨", "name": "Image Studio", "desc": "generates images"},
+    {"key": "compliance", "agent": "COMPLIANCE", "icon": "🛡️", "name": "Compliance Office", "desc": "checks violations"},
+    {"key": "mockup", "agent": "MOCKUP", "icon": "📦", "name": "Mockup Assembly", "desc": "selects products"},
+    {"key": "pricing", "agent": "PRICING", "icon": "💰", "name": "Pricing Bureau", "desc": "sets prices"},
+    {"key": "approval", "agent": "APPROVAL", "icon": "✅", "name": "Approval Gate", "desc": "approves designs"},
+    {"key": "simulator", "agent": "SIMULATOR", "icon": "📊", "name": "Market Simulator", "desc": "calculates results"},
 ]
 
+COLUMNS = 4
+ROOM_W, ROOM_H = 220, 150
+CORRIDOR_Y = 280
+TOP_ROW_Y, BOTTOM_ROW_Y = 70, 340
+CANVAS_W, CANVAS_H = 960, 560
 
-def build_arena_payload(df, max_designs=40):
-    """Convert simulation rows into the compact design list that feeds the arena."""
-    designs = []
-    for _, r in df.head(max_designs).iterrows():
-        designs.append({
+
+def station_layout():
+    """Return room geometry for each station (grid of rooms around a central corridor)."""
+    layout = []
+    for i, s in enumerate(STATIONS):
+        col, row = i % COLUMNS, i // COLUMNS
+        x = 20 + col * (ROOM_W + 20)
+        y = TOP_ROW_Y if row == 0 else BOTTOM_ROW_Y
+        layout.append({**s, "index": i, "x": x, "y": y, "w": ROOM_W, "h": ROOM_H,
+                       "door": (x + ROOM_W // 2, CORRIDOR_Y), "home": (x + ROOM_W // 2, y + ROOM_H - 40)})
+    return layout
+
+
+def find_path(src, dst, layout=None):
+    """Waypoints for an agent walking from station src's room to station dst's room via the corridor."""
+    layout = layout or station_layout()
+    a, b = layout[src], layout[dst]
+    if src == dst:
+        return [a["home"]]
+    return [a["home"], a["door"], b["door"], b["home"]]
+
+
+def design_payload(df, limit=40):
+    """Reduce a merged designs/results frame to the records the arena animates."""
+    rows = []
+    for _, r in df.head(limit).iterrows():
+        rows.append({
             "id": str(r["design_id"]),
             "niche": str(r["niche"]),
             "flagged": bool(r["compliance_status"] == "flagged"),
             "approved": bool(r["approved"]),
             "profit": float(r["profit"]) if r["profit"] == r["profit"] else 0.0,
-            "revenue": float(r["revenue"]) if r["revenue"] == r["revenue"] else 0.0,
         })
-    return {
-        "stations": [{"agent": a, "icon": i, "name": n, "desc": d} for a, i, n, d in STATIONS],
-        "designs": designs,
-    }
+    return rows
 
 
-def render_arena_html(payload, quote):
-    data = json.dumps({"payload": payload, "quote": quote}).replace("</", "<\\/")
-    return _TEMPLATE.replace("__DATA__", data)
+def build_arena_html(designs):
+    config = {"stations": station_layout(), "designs": designs, "w": CANVAS_W, "h": CANVAS_H,
+              "corridorY": CORRIDOR_Y}
+    data = json.dumps(config).replace("</", "<\\/")
+    return ARENA_TEMPLATE.replace("__CONFIG__", data)
 
 
-_TEMPLATE = """
-<style>
-body{margin:0;background:#0a0e27;color:#00ff41;font-family:monospace}
-#bar{display:flex;gap:8px;align-items:center;padding:6px 0;flex-wrap:wrap}
-button{background:#0a0e27;color:#00ff41;border:1px solid #00ff41;padding:4px 12px;cursor:pointer;font-family:monospace}
-button.on{background:#00ff41;color:#0a0e27}
-canvas{width:100%;border:2px solid #00ff41;box-shadow:0 0 12px #00ff41;background:#0a0e27;display:block}
-#info{border:1px solid #00ccff;color:#00ccff;padding:8px;margin-top:6px;min-height:44px;font-size:13px}
-#metrics{color:#00ccff;margin-left:auto;font-size:13px}
-</style>
-<div id="bar">
- <button id="play">⏸ PAUSE</button>
- <button data-s="1" class="on">1x</button><button data-s="2">2x</button><button data-s="4">4x</button>
- <button id="reset">↺ RESET</button>
- <span id="metrics"></span>
+ARENA_TEMPLATE = r"""
+<div style="background:#0a0e27;color:#00ff41;font-family:'Courier New',monospace;">
+<div id="bar" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:6px 0;">
+  <button id="play">⏸ PAUSE</button><button id="slow">⏪ SLOWER</button><button id="fast">⏩ FASTER</button>
+  <button id="reset">🔄 RESTART</button><span id="speed" style="color:#00ccff">SPEED x1</span>
+  <span id="metrics" style="margin-left:auto;color:#ffaa00"></span>
 </div>
-<canvas id="c" width="960" height="560"></canvas>
-<div id="info">Click an agent or a station to inspect it.</div>
+<canvas id="c" style="width:100%;border:2px solid #00ff41;border-radius:8px;box-shadow:0 0 20px rgba(0,255,65,.4);cursor:pointer"></canvas>
+<div id="info" style="margin-top:6px;border:2px solid #00ccff;border-radius:8px;padding:10px;color:#00ccff;min-height:48px">
+Click an agent or a station to inspect it.</div>
+</div>
+<style>#bar button{background:linear-gradient(135deg,#00ff41,#00cc33);color:#0a0e27;border:0;border-radius:6px;padding:6px 12px;font-weight:bold;font-family:inherit;cursor:pointer}</style>
 <script>
-const D = __DATA__, P = D.payload, W = 960, H = 560;
+const CFG = __CONFIG__;
+const S = CFG.stations, D = CFG.designs;
 const cv = document.getElementById('c'), ctx = cv.getContext('2d');
-const RW = 210, RH = 150, TOP = 80, GAPX = 30, GAPY = 40, X0 = 20;
-let paused = false, speed = 1, sel = null, S;
-function roomPos(i) {
-  const row = i < 4 ? 0 : 1, col = row === 0 ? i : 7 - i;
-  return {x: X0 + col * (RW + GAPX), y: TOP + row * (RH + GAPY)};
+cv.width = CFG.w; cv.height = CFG.h;
+const WALK = 140, DUR = 1.4, SPAWN = 1.2;
+let speed = 1, playing = true, sel = null, st, last = performance.now();
+
+function path(a, b) {
+  if (a === b) return [S[a].home];
+  return [S[a].home, S[a].door, S[b].door, S[b].home];
 }
-function door(i) { const p = roomPos(i); return {x: p.x + RW / 2, y: p.y + RH - 22}; }
-function init() {
-  S = {t: 0, spawn: 0, next: 0, done: 0, rejected: 0, approved: 0, profit: 0, revenue: 0, fx: [],
-    st: P.stations.map((s, i) => ({q: [], cur: null, prog: 0, processed: 0, ...s})),
-    ag: P.stations.map((s, i) => ({i, ...s, ...door(i), tx: 0, ty: 0, mode: 'idle', pkg: null, handled: 0, dist: 0}))};
+function reset() {
+  st = {t: 0, spawnT: 0, next: 0, spawned: 0, done: 0, rejected: 0, profit: 0, fx: [],
+    stations: S.map(() => ({queue: [], cur: null, prog: 0, processed: 0, busyTime: 0})),
+    agents: S.map((s, i) => ({i, x: s.home[0], y: s.home[1], state: 'idle', pkg: null, wp: [], to: i, delivered: 0, dist: 0}))};
 }
-function dur(i) { return 1.2 + (i % 3) * 0.4; }
-function finish(a, d) {
-  const i = a.i;
-  S.st[i].processed++; a.handled++;
-  if (i === 3 && d.flagged) return reject(a, d);
-  if (i === 6 && !d.approved) return reject(a, d);
-  if (i === 6) S.approved++;
-  if (i === 7) { S.done++; S.profit += d.profit; S.revenue += d.revenue; S.fx.push({x: a.x, y: a.y - 30, t: 0, txt: '+$' + d.profit.toFixed(0)}); return; }
-  a.pkg = d; a.mode = 'carry'; const n = door(i + 1); a.tx = n.x; a.ty = n.y;
+function finishAll() { return st.done + st.rejected >= D.length; }
+function cipherLine() {
+  const dec = st.done + st.rejected;
+  if (!dec) return "Hurry up, you lazy circuits. Science waits for no one.";
+  const r = st.done / dec;
+  if (r >= .7) return "*burp* Okay, that is actually impressive.";
+  if (r >= .5) return "Acceptable. Could be better, obviously.";
+  if (r >= .3) return "Meh. My toaster has better throughput.";
+  return "This is a disaster! Recalibrating my disappointment...";
 }
-function reject(a, d) { S.rejected++; S.fx.push({x: a.x, y: a.y - 30, t: 0, txt: '✖ ' + d.id, bad: 1}); }
-function step(dt) {
-  S.t += dt; S.spawn -= dt;
-  if (S.spawn <= 0 && S.next < P.designs.length) { S.st[0].q.push(P.designs[S.next++]); S.spawn = 1.0; }
-  S.ag.forEach(a => {
-    const s = S.st[a.i];
-    if (a.mode === 'idle' && !s.cur && s.q.length) { s.cur = s.q.shift(); s.prog = 0; a.mode = 'work'; }
-    if (a.mode === 'work') { s.prog += dt / dur(a.i); if (s.prog >= 1) { const d = s.cur; s.cur = null; a.mode = 'idle'; finish(a, d); } }
-    if (a.mode === 'carry' || a.mode === 'return') {
-      if (a.mode === 'return') { const h = door(a.i); a.tx = h.x; a.ty = h.y; }
-      const dx = a.tx - a.x, dy = a.ty - a.y, dist = Math.hypot(dx, dy), v = 160 * dt;
-      if (dist <= v) {
-        a.x = a.tx; a.y = a.ty;
-        if (a.mode === 'carry') { S.st[a.i + 1].q.push(a.pkg); a.pkg = null; a.mode = 'return'; }
-        else a.mode = 'idle';
-      } else { a.x += dx / dist * v; a.y += dy / dist * v; a.dist += v; }
+function update(dt) {
+  st.t += dt;
+  st.spawnT += dt;
+  if (st.next < D.length && st.spawnT >= SPAWN) {
+    st.spawnT = 0; st.stations[0].queue.push(D[st.next++]); st.spawned++;
+  }
+  S.forEach((s, i) => {
+    const sn = st.stations[i], ag = st.agents[i];
+    if (!sn.cur && sn.queue.length && ag.state === 'idle') { sn.cur = sn.queue.shift(); sn.prog = 0; }
+    if (sn.cur) {
+      sn.prog += dt / DUR; sn.busyTime += dt;
+      if (sn.prog >= 1) {
+        const d = sn.cur; sn.cur = null; sn.processed++;
+        if ((i === 3 && d.flagged) || (i === 6 && !d.approved)) { st.rejected++; st.fx.push({x: s.home[0], y: s.home[1] - 40, t: 0, txt: '✖', c: '#ff4444'}); }
+        else if (i === S.length - 1) { st.done++; st.profit += d.profit; st.fx.push({x: s.home[0], y: s.home[1] - 40, t: 0, txt: '+$' + d.profit.toFixed(0), c: '#00ff41'}); }
+        else { ag.pkg = d; ag.state = 'deliver'; ag.to = i + 1; ag.wp = path(i, i + 1).slice(1); }
+      }
     }
   });
-  S.fx.forEach(f => { f.t += dt; f.y -= 20 * dt; });
-  S.fx = S.fx.filter(f => f.t < 1.5);
+  st.agents.forEach(ag => {
+    if (ag.state === 'idle') return;
+    let step = WALK * dt;
+    while (step > 0 && ag.wp.length) {
+      const [tx, ty] = ag.wp[0], dx = tx - ag.x, dy = ty - ag.y, d = Math.hypot(dx, dy);
+      if (d <= step) { ag.x = tx; ag.y = ty; ag.wp.shift(); ag.dist += d; step -= d; }
+      else { ag.x += dx / d * step; ag.y += dy / d * step; ag.dist += step; step = 0; }
+    }
+    if (!ag.wp.length) {
+      if (ag.state === 'deliver') {
+        st.stations[ag.to].queue.push(ag.pkg); ag.pkg = null; ag.delivered++;
+        st.fx.push({x: ag.x, y: ag.y - 30, t: 0, txt: '📨', c: '#00ccff'});
+        ag.state = 'return'; ag.wp = [S[ag.to].door, S[ag.i].door, S[ag.i].home];
+      } else { ag.state = 'idle'; }
+    }
+  });
+  st.fx.forEach(f => f.t += dt); st.fx = st.fx.filter(f => f.t < 1.2);
 }
-function drawDrCipher(x, y, mood) {
-  ctx.fillStyle = '#00ccff';
-  ctx.beginPath(); ctx.moveTo(x - 16, y - 8);
-  [-18, -10, -2, 6, 14].forEach((dx, k) => { ctx.lineTo(x + dx, y - 30 - (k % 2) * 8); ctx.lineTo(x + dx + 4, y - 12); });
-  ctx.lineTo(x + 16, y - 8); ctx.fill();
-  ctx.fillStyle = '#ffd7b0'; ctx.beginPath(); ctx.arc(x, y, 14, 0, 7); ctx.fill();
-  ctx.fillStyle = '#0a0e27'; ctx.fillRect(x - 7, y - 4, 4, 4); ctx.fillRect(x + 3, y - 4, 4, 4);
-  ctx.strokeStyle = '#0a0e27'; ctx.beginPath(); ctx.arc(x, y + 4, 5, mood ? 0.1 : 3.3, mood ? 3 : 6.1); ctx.stroke();
-  ctx.fillStyle = '#e8f7ff'; ctx.fillRect(x - 16, y + 14, 32, 14);
+function status(i) {
+  const sn = st.stations[i];
+  if (sn.cur) return 'BUSY';
+  if (sn.queue.length) return 'WAITING FOR COURIER';
+  return finishAll() ? 'COMPLETE' : 'IDLE';
 }
+const COL = {BUSY: '#ffaa00', IDLE: '#4a5a7a', COMPLETE: '#00ff41', 'WAITING FOR COURIER': '#00ccff'};
+function glowRect(x, y, w, h, c) { ctx.shadowColor = c; ctx.shadowBlur = 12; ctx.strokeStyle = c; ctx.lineWidth = 2; ctx.strokeRect(x, y, w, h); ctx.shadowBlur = 0; }
+function drawCipher() {
+  ctx.fillStyle = '#12183a'; ctx.fillRect(20, 6, 920, 52); glowRect(20, 6, 920, 52, '#ff6b9d');
+  ctx.fillStyle = '#4da6ff';
+  for (let k = 0; k < 5; k++) { ctx.beginPath(); ctx.moveTo(48 + k * 9, 24); ctx.lineTo(52 + k * 9, 6 + (k % 2) * 4); ctx.lineTo(58 + k * 9, 24); ctx.fill(); }
+  ctx.fillStyle = '#ffd9b3'; ctx.beginPath(); ctx.arc(70, 32, 14, 0, 7); ctx.fill();
+  ctx.fillStyle = '#e8f7ff'; ctx.fillRect(52, 44, 36, 14);
+  ctx.fillStyle = '#ff6b9d'; ctx.font = 'bold 13px Courier New'; ctx.fillText('DR. CIPHER — COMMAND CENTER', 100, 24);
+  ctx.fillStyle = '#00ff41'; ctx.font = '12px Courier New'; ctx.fillText('"' + cipherLine() + '"', 100, 44);
+}
+function drawRoom(s, i) {
+  const sn = st.stations[i], stt = status(i), c = COL[stt];
+  ctx.fillStyle = '#0f1535'; ctx.fillRect(s.x, s.y, s.w, s.h); glowRect(s.x, s.y, s.w, s.h, sel && sel.k === 's' && sel.i === i ? '#ffffff' : c);
+  ctx.fillStyle = '#00ccff'; ctx.font = 'bold 13px Courier New'; ctx.fillText(s.icon + ' ' + s.name, s.x + 8, s.y + 20);
+  ctx.fillStyle = c; ctx.font = '11px Courier New'; ctx.fillText('● ' + stt, s.x + 8, s.y + 36);
+  ctx.fillStyle = '#ffaa00'; ctx.fillText('queue: ' + sn.queue.length + '  done: ' + sn.processed, s.x + 8, s.y + 52);
+  ctx.fillStyle = '#0a0e27'; ctx.fillRect(s.x + 8, s.y + 60, s.w - 16, 8);
+  ctx.fillStyle = '#00ff41'; ctx.fillRect(s.x + 8, s.y + 60, (s.w - 16) * (sn.cur ? Math.min(sn.prog, 1) : 0), 8);
+}
+function pkg(x, y) { ctx.shadowColor = '#00ccff'; ctx.shadowBlur = 10; ctx.fillStyle = '#00ccff'; ctx.fillRect(x - 5, y - 5, 10, 10); ctx.shadowBlur = 0; }
 function draw() {
-  ctx.clearRect(0, 0, W, H);
-  ctx.fillStyle = '#0d1330'; ctx.fillRect(0, 0, W, H);
-  ctx.fillStyle = '#12204a'; ctx.fillRect(0, 0, W, 64);
-  drawDrCipher(50, 30, S.rejected <= S.approved);
-  ctx.fillStyle = '#00ccff'; ctx.font = 'bold 13px monospace'; ctx.textAlign = 'left';
-  ctx.fillText('DR. CIPHER — COMMAND CENTER', 90, 22);
-  ctx.fillStyle = '#00ff41'; ctx.font = '12px monospace';
-  const q = D.quote.length > 110 ? D.quote.slice(0, 107) + '...' : D.quote;
-  ctx.fillText('"' + q + '"', 90, 44);
-  S.st.forEach((s, i) => {
-    const p = roomPos(i), busy = !!s.cur, hot = sel && sel.k === 's' && sel.i === i;
-    ctx.fillStyle = busy ? '#0f2a2a' : '#0b1233'; ctx.fillRect(p.x, p.y, RW, RH);
-    ctx.strokeStyle = hot ? '#fff' : busy ? '#00ff41' : '#00ccff'; ctx.lineWidth = hot ? 3 : busy ? 2.5 : 1;
-    ctx.shadowColor = ctx.strokeStyle; ctx.shadowBlur = busy ? 14 : 4; ctx.strokeRect(p.x, p.y, RW, RH); ctx.shadowBlur = 0;
-    ctx.fillStyle = '#00ff41'; ctx.font = 'bold 13px monospace'; ctx.textAlign = 'left';
-    ctx.fillText(s.icon + ' ' + s.name, p.x + 8, p.y + 20);
-    ctx.fillStyle = busy ? '#00ff41' : s.q.length ? '#ffaa00' : '#557'; ctx.font = '11px monospace';
-    ctx.fillText(busy ? 'BUSY' : s.q.length ? 'WAITING' : 'IDLE', p.x + 8, p.y + 38);
-    ctx.fillStyle = '#00ccff'; ctx.fillText('queue ' + s.q.length + ' | done ' + s.processed, p.x + 8, p.y + 54);
-    if (busy) { ctx.fillStyle = '#123'; ctx.fillRect(p.x + 8, p.y + 62, RW - 16, 8); ctx.fillStyle = '#00ff41'; ctx.fillRect(p.x + 8, p.y + 62, (RW - 16) * s.prog, 8); }
-    for (let k = 0; k < Math.min(s.q.length, 6); k++) { ctx.fillStyle = '#ffaa00'; ctx.fillRect(p.x + 8 + k * 12, p.y + 78, 9, 9); }
-    if (i < 7) { const a = door(i), b = door(i + 1); ctx.strokeStyle = 'rgba(0,204,255,.25)'; ctx.setLineDash([4, 6]); ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke(); ctx.setLineDash([]); }
+  ctx.fillStyle = '#0a0e27'; ctx.fillRect(0, 0, CFG.w, CFG.h);
+  ctx.fillStyle = '#141a40'; ctx.fillRect(20, CFG.corridorY - 30, 920, 60);
+  ctx.strokeStyle = 'rgba(0,255,65,.25)'; ctx.setLineDash([8, 8]); ctx.beginPath(); ctx.moveTo(20, CFG.corridorY); ctx.lineTo(940, CFG.corridorY); ctx.stroke(); ctx.setLineDash([]);
+  drawCipher(); S.forEach(drawRoom);
+  S.forEach((s, i) => { const sn = st.stations[i]; if (sn.cur) pkg(s.x + s.w - 20, s.y + 22 + Math.sin(st.t * 6) * 2); });
+  st.agents.forEach(a => {
+    const s = S[a.i], bob = a.state === 'idle' ? 0 : Math.sin(st.t * 14) * 3;
+    ctx.shadowColor = '#00ff41'; ctx.shadowBlur = 12; ctx.fillStyle = '#1a2d4e'; ctx.strokeStyle = sel && sel.k === 'a' && sel.i === a.i ? '#fff' : '#00ff41'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(a.x, a.y + bob, 16, 0, 7); ctx.fill(); ctx.stroke(); ctx.shadowBlur = 0;
+    ctx.font = '16px serif'; ctx.textAlign = 'center'; ctx.fillStyle = '#fff'; ctx.fillText(s.icon, a.x, a.y + bob + 6);
+    ctx.font = '9px Courier New'; ctx.fillStyle = '#00ff41'; ctx.fillText(s.agent, a.x, a.y + bob + 28);
+    if (a.pkg) pkg(a.x + 14, a.y + bob - 14);
+    ctx.textAlign = 'left';
   });
-  S.ag.forEach(a => {
-    const hot = sel && sel.k === 'a' && sel.i === a.i;
-    ctx.fillStyle = a.mode === 'work' ? '#00ff41' : a.mode === 'idle' ? '#00ccff' : '#ffaa00';
-    ctx.shadowColor = ctx.fillStyle; ctx.shadowBlur = 10;
-    ctx.beginPath(); ctx.arc(a.x, a.y, 12, 0, 7); ctx.fill(); ctx.shadowBlur = 0;
-    if (hot) { ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.stroke(); }
-    ctx.fillStyle = '#0a0e27'; ctx.font = '12px monospace'; ctx.textAlign = 'center'; ctx.fillText(a.icon, a.x, a.y + 4);
-    ctx.fillStyle = '#00ff41'; ctx.font = '10px monospace'; ctx.fillText(a.agent, a.x, a.y + 24);
-    if (a.pkg) { ctx.fillStyle = '#ff00ff'; ctx.fillRect(a.x + 8, a.y - 18, 12, 12); ctx.strokeStyle = '#fff'; ctx.lineWidth = 1; ctx.strokeRect(a.x + 8, a.y - 18, 12, 12); }
-  });
-  S.fx.forEach(f => { ctx.globalAlpha = Math.max(0, 1 - f.t / 1.5); ctx.fillStyle = f.bad ? '#ff4444' : '#00ff41'; ctx.font = 'bold 13px monospace'; ctx.textAlign = 'center'; ctx.fillText(f.txt, f.x, f.y); ctx.globalAlpha = 1; });
-  ctx.textAlign = 'left';
-  const total = P.designs.length;
-  document.getElementById('metrics').textContent =
-    'Spawned ' + S.next + '/' + total + ' | Completed ' + S.done + ' | Approved ' + S.approved + ' | Rejected ' + S.rejected + ' | Profit $' + S.profit.toFixed(0);
-  updateInfo();
+  st.fx.forEach(f => { ctx.globalAlpha = 1 - f.t / 1.2; ctx.fillStyle = f.c; ctx.font = 'bold 14px Courier New'; ctx.fillText(f.txt, f.x, f.y - f.t * 30); ctx.globalAlpha = 1; });
+  ctx.fillStyle = '#12183a'; ctx.fillRect(20, 510, 920, 40); glowRect(20, 510, 920, 40, '#00ccff');
+  ctx.fillStyle = '#00ccff'; ctx.font = '12px Courier New';
+  ctx.fillText('FLOW: ' + st.spawned + '/' + D.length + ' entered  →  ' + st.done + ' completed  |  ' + st.rejected + ' rejected  |  ' + (finishAll() ? 'ALL DESIGNS PROCESSED' : 'IN PROGRESS'), 32, 535);
+  document.getElementById('metrics').textContent = 'Profit $' + st.profit.toFixed(0) + ' | Approved ' + st.done + ' | Rejected ' + st.rejected;
+  renderInfo();
 }
-function updateInfo() {
-  if (!sel) return;
+function renderInfo() {
   const el = document.getElementById('info');
-  if (sel.k === 'a') { const a = S.ag[sel.i];
-    el.innerHTML = a.icon + ' <b>' + a.agent + ' Agent</b> — ' + a.desc + '<br>Status: ' + a.mode.toUpperCase() + ' | Designs handled: ' + a.handled + ' | Distance walked: ' + Math.round(a.dist) + 'px | Carrying: ' + (a.pkg ? a.pkg.id : 'nothing'); }
-  else { const s = S.st[sel.i];
-    el.innerHTML = s.icon + ' <b>' + s.name + '</b> — ' + s.desc + '<br>Status: ' + (s.cur ? 'BUSY (' + s.cur.id + ', ' + Math.round(s.prog * 100) + '%)' : s.q.length ? 'WAITING' : 'IDLE') + ' | Queue: ' + s.q.length + ' | Processed: ' + s.processed; }
+  if (!sel) return;
+  if (sel.k === 'a') {
+    const a = st.agents[sel.i], s = S[sel.i];
+    el.innerHTML = '<b>' + s.icon + ' ' + s.agent + ' AGENT</b> — ' + s.desc + '<br>State: ' + a.state.toUpperCase() + ' | Deliveries: ' + a.delivered + ' | Processed: ' + st.stations[sel.i].processed + ' | Distance walked: ' + Math.round(a.dist) + 'px' + (a.pkg ? ' | Carrying: ' + a.pkg.id : '');
+  } else {
+    const sn = st.stations[sel.i], s = S[sel.i];
+    el.innerHTML = '<b>' + s.icon + ' ' + s.name.toUpperCase() + '</b> — ' + s.desc + '<br>Status: ' + status(sel.i) + ' | Queue: ' + sn.queue.length + ' | Processed: ' + sn.processed + ' | Current: ' + (sn.cur ? sn.cur.id + ' (' + sn.cur.niche + ') ' + Math.round(sn.prog * 100) + '%' : '—');
+  }
 }
 cv.addEventListener('click', e => {
-  const r = cv.getBoundingClientRect(), x = (e.clientX - r.left) * W / r.width, y = (e.clientY - r.top) * H / r.height;
-  const a = S.ag.find(a => Math.hypot(a.x - x, a.y - y) < 16);
-  if (a) { sel = {k: 'a', i: a.i}; return; }
-  const i = S.st.findIndex((s, i) => { const p = roomPos(i); return x >= p.x && x <= p.x + RW && y >= p.y && y <= p.y + RH; });
-  sel = i >= 0 ? {k: 's', i} : null;
+  const r = cv.getBoundingClientRect(), x = (e.clientX - r.left) * CFG.w / r.width, y = (e.clientY - r.top) * CFG.h / r.height;
+  sel = null;
+  st.agents.forEach(a => { if (Math.hypot(a.x - x, a.y - y) < 20) sel = {k: 'a', i: a.i}; });
+  if (!sel) S.forEach((s, i) => { if (x >= s.x && x <= s.x + s.w && y >= s.y && y <= s.y + s.h) sel = {k: 's', i}; });
+  if (!sel) document.getElementById('info').textContent = 'Click an agent or a station to inspect it.';
 });
-const playBtn = document.getElementById('play');
-playBtn.onclick = () => { paused = !paused; playBtn.textContent = paused ? '▶ PLAY' : '⏸ PAUSE'; };
-document.querySelectorAll('button[data-s]').forEach(b => b.onclick = () => {
-  speed = +b.dataset.s; document.querySelectorAll('button[data-s]').forEach(x => x.classList.toggle('on', x === b));
-});
-document.getElementById('reset').onclick = () => { init(); };
-let last = performance.now();
-function loop(now) { const dt = Math.min((now - last) / 1000, 0.1); last = now; if (!paused) step(dt * speed); draw(); requestAnimationFrame(loop); }
-init(); requestAnimationFrame(loop);
+const setSpeed = v => { speed = Math.max(0.5, Math.min(8, v)); document.getElementById('speed').textContent = 'SPEED x' + speed; };
+document.getElementById('play').onclick = e => { playing = !playing; e.target.textContent = playing ? '⏸ PAUSE' : '▶ PLAY'; };
+document.getElementById('slow').onclick = () => setSpeed(speed / 2);
+document.getElementById('fast').onclick = () => setSpeed(speed * 2);
+document.getElementById('reset').onclick = () => reset();
+function loop(now) {
+  const dt = Math.min((now - last) / 1000, 0.1); last = now;
+  if (playing) { const steps = Math.max(1, Math.ceil(speed)); for (let k = 0; k < steps; k++) update(dt * speed / steps); }
+  draw(); requestAnimationFrame(loop);
+}
+reset(); requestAnimationFrame(loop);
 </script>
 """

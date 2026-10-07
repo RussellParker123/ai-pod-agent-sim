@@ -1,21 +1,24 @@
 import pandas as pd
 
-from app.arena import STATIONS, build_arena_payload, render_arena_html
+from app.arena import STATIONS, build_arena_html, design_payload, find_path, station_layout
 
 
-def _df():
-    return pd.DataFrame([
-        {"design_id": "d1", "niche": "cats", "compliance_status": "pass", "approved": True, "profit": 5.0, "revenue": 9.0},
-        {"design_id": "d2", "niche": "dogs", "compliance_status": "flagged", "approved": False, "profit": float("nan"), "revenue": float("nan")},
-    ])
+def test_eight_stations_with_unique_rooms():
+    layout = station_layout()
+    assert len(STATIONS) == 8 and len(layout) == 8
+    assert len({(s["x"], s["y"]) for s in layout}) == 8
 
 
-def test_payload_has_eight_stations_and_designs():
-    p = build_arena_payload(_df())
-    assert len(STATIONS) == 8 and len(p["stations"]) == 8
-    assert p["designs"][1]["flagged"] and p["designs"][1]["profit"] == 0.0
+def test_pathfinding_goes_through_corridor():
+    layout = station_layout()
+    path = find_path(0, 5, layout)
+    assert path[0] == layout[0]["home"] and path[-1] == layout[5]["home"]
+    assert path[1][1] == path[2][1]  # both doors on corridor
 
 
-def test_html_escapes_script_close():
-    html = render_arena_html(build_arena_payload(_df()), "hi </script><b>")
-    assert "</script><b>" not in html
+def test_build_html_embeds_designs():
+    df = pd.DataFrame([{"design_id": "d1", "niche": "cats", "compliance_status": "flagged",
+                        "approved": False, "profit": float("nan")}])
+    payload = design_payload(df)
+    assert payload[0]["flagged"] is True and payload[0]["profit"] == 0.0
+    assert '"d1"' in build_arena_html(payload)
