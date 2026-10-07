@@ -133,7 +133,8 @@ def publish_reviewed_run(
         {"design_id": design["design_id"], **adapter.list_design(design, real=real)}
         for design in eligible
     ]
-    output_path = save_json(payload, f"published_{run_name}")
+    output_path = DATA_DIR / f"published_{run_name}"
+    output_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
     return str(output_path)
 
 
@@ -163,8 +164,8 @@ if __name__ == "__main__":
     if args.publish_run:
         if args.real and not real:
             raise SystemExit(0)
-        if not (real or args.draft_only):
-            parser.error("--publish-run requires --real or --draft-only")
+        if not real:
+            parser.error("--publish-run requires --real")
         p = publish_reviewed_run(args.publish_run, real=real, draft_only=args.draft_only)
     else:
         p = run_once(etsy_mode=args.etsy_mode, real=real, draft_only=args.draft_only)

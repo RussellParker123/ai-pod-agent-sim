@@ -72,7 +72,7 @@ def test_publish_reviewed_run_only_lists_approved_designs(tmp_path, monkeypatch)
             listed.append(design["design_id"])
             return {"mode": "simulated"}
 
-    monkeypatch.setattr("app.marketplace.adapter.get_adapter", lambda **kwargs: Adapter())
+    monkeypatch.setattr("app.marketplace.adapter.get_adapter", lambda *args, **kwargs: Adapter())
     result_path = run_simulation.publish_reviewed_run(run_name)
 
     assert listed == ["D1", "D2"]
