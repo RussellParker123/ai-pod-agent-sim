@@ -188,6 +188,29 @@ class EtsyConnector:
             {"term": term, "count": count} for term, count in ranked[:limit]
         ]
 
+    def get_best_sellers(self, limit=10):
+        """Return active listings ranked by a demand proxy.
+
+        Etsy's public listing API exposes views and favorites but not sales
+        counts, so demand is estimated as favorites weighted over views.
+        """
+        ranked = []
+        for listing in self._get_listings("active"):
+            views = int(listing.get("views") or 0)
+            favorers = int(listing.get("num_favorers") or 0)
+            ranked.append(
+                {
+                    "listing_id": listing.get("listing_id"),
+                    "title": listing.get("title", ""),
+                    "tags": listing.get("tags", []),
+                    "views": views,
+                    "favorites": favorers,
+                    "demand": favorers * 5 + views,
+                }
+            )
+        ranked.sort(key=lambda item: -item["demand"])
+        return ranked[:limit]
+
     def get_historical_flagged_items(self):
         """Return inactive listings as compliance references.
 
