@@ -4,6 +4,9 @@ import pandas as pd
 import streamlit as st
 import plotly.graph_objects as go
 import plotly.express as px
+import streamlit.components.v1 as components
+
+from app.arena import build_arena_html, design_payload
 
 DATA_DIR = Path(__file__).resolve().parents[1] / "data"
 
@@ -239,63 +242,61 @@ total_revenue = df['revenue'].sum()
 total_profit = df['profit'].sum()
 approval_rate = (approved / total_designs * 100) if total_designs > 0 else 0
 
-# === RICK MANAGER (OVERSEER) ===
+# === DR. CIPHER (OVERSEER) ===
 st.markdown("---")
 
-# Generate Rick's quote based on performance
-rick_quotes = {
+cipher_quotes = {
     "excellent": [
-        "Wubba lubba dub dub! Now THAT'S a simulation! 🤢 *burp* Impressive.",
-        "Burp! Not bad, not bad at all. Your agents actually know what they're doing.",
-        "*burp* I've seen worse. Much worse. Like Morty-level worse.",
+        "*burp* Now THAT'S a simulation. Impressive.",
+        "Not bad at all. Your agents actually know what they're doing.",
     ],
     "good": [
-        "Eh, I guess that's acceptable. *burp* Could be better though.",
-        "Look, it's functional. That's all I'm saying. *burp*",
-        "Not terrible. I mean, I've done better in my sleep. *burp*",
+        "Eh, acceptable. Could be better though.",
+        "It's functional. That's all I'm saying.",
     ],
     "mediocre": [
-        "Aw geez, really? That's the best you could do? *burp*",
-        "*burp* I don't want to say I'm disappointed, but... actually, I do.",
-        "This is what happens when you rely on AGENTS, Morty— I mean, when you run simulations poorly.",
+        "Really? That's the best you could do?",
+        "I don't want to say I'm disappointed, but... actually, I do.",
     ],
     "poor": [
-        "What is THIS?! *burp* Did Morty write this code? Ugh.",
-        "*burp* I've seen better performance from a PICKLE, and I was one.",
-        "Aw man, this is BAD. Like, really bad. We need to get schwifty with optimization.",
-    ]
+        "What is THIS?! My toaster has better throughput.",
+        "This is BAD. We need to recalibrate the whole pipeline.",
+    ],
 }
 
 if approval_rate >= 70:
-    rick_quote = rick_quotes["excellent"][hash(str(approved)) % len(rick_quotes["excellent"])]
+    tier = "excellent"
 elif approval_rate >= 50:
-    rick_quote = rick_quotes["good"][hash(str(approved)) % len(rick_quotes["good"])]
+    tier = "good"
 elif approval_rate >= 30:
-    rick_quote = rick_quotes["mediocre"][hash(str(approved)) % len(rick_quotes["mediocre"])]
+    tier = "mediocre"
 else:
-    rick_quote = rick_quotes["poor"][hash(str(approved)) % len(rick_quotes["poor"])]
+    tier = "poor"
+cipher_quote = cipher_quotes[tier][approved % len(cipher_quotes[tier])]
 
-rick_html = f"""
+cipher_html = f"""
 <div class="rick-manager">
-    <div class="rick-image-container">
-        <img src="https://raw.githubusercontent.com/RussellParker123/ai-pod-agent-sim/main/assets/rick.png" alt="Rick Sanchez" onerror="this.style.display='none'">
-    </div>
-    <div class="rick-title">RICK SANCHEZ - SIMULATION OVERLORD</div>
-    <div class="rick-quote">"{rick_quote}"</div>
+    <div class="rick-title">🧪 DR. CIPHER - SIMULATION OVERSEER</div>
+    <div class="rick-quote">"{cipher_quote}"</div>
     <div class="rick-stats">
-        <strong>Portal Gun Reading:</strong> {approval_rate:.1f}% Approval Rate | {total_profit:,.0f}$ Total Profit | {total_designs} Designs Processed
+        <strong>Portal Device Reading:</strong> {approval_rate:.1f}% Approval Rate | {total_profit:,.0f}$ Total Profit | {total_designs} Designs Processed
     </div>
 </div>
 """
-st.markdown(rick_html, unsafe_allow_html=True)
+st.markdown(cipher_html, unsafe_allow_html=True)
+
+# === GAME ARENA ===
+st.markdown("<h2>🏭 THE VAULT: LIVE SIMULATION ARENA</h2>", unsafe_allow_html=True)
+st.caption("Agents walk between stations carrying designs. Click agents or stations to inspect them; use the controls to pause or change speed.")
+components.html(build_arena_html(design_payload(df)), height=720)
 
 st.markdown("---")
 
 # === AGENT CHARACTERS ===
-st.markdown("<h2>👾 RICK'S AGENT TEAM</h2>", unsafe_allow_html=True)
+st.markdown("<h2>👾 DR. CIPHER'S AGENT TEAM</h2>", unsafe_allow_html=True)
 st.markdown("""
 <div style='text-align: center; color: #00ff41; font-size: 12px; margin-bottom: 20px;'>
-Meet the misfits working under Rick's tyrannical management...
+Meet the misfits working under Dr. Cipher's management...
 </div>
 """, unsafe_allow_html=True)
 
@@ -574,16 +575,16 @@ st.markdown("""
 <div style='background: linear-gradient(135deg, #1a2d4e 0%, #2d1b4e 100%); 
             border: 2px solid #00ccff; border-radius: 8px; padding: 16px; 
             box-shadow: 0 0 10px rgba(0, 204, 255, 0.3);'>
-<h4 style='color: #00ccff;'>💡 AGENT SURVIVAL TIPS (From Rick)</h4>
+<h4 style='color: #00ccff;'>💡 AGENT SURVIVAL TIPS (From Dr. Cipher)</h4>
 <ul style='color: #00ff41;'>
-    <li>⚡ Higher trend scores = better marketplace performance (obvious, even for Morty)</li>
-    <li>🛡️ Compliance checks prevent costly rejections (don't be an idiot)</li>
-    <li>💰 Volume × Margin = Profit. Balance both! (it's science, burp)</li>
-    <li>🎯 CTR > 5% unlocks premium status (get schwifty with marketing)</li>
+    <li>⚡ Higher trend scores = better marketplace performance</li>
+    <li>🛡️ Compliance checks prevent costly rejections</li>
+    <li>💰 Volume × Margin = Profit. Balance both! (it's science)</li>
+    <li>🎯 CTR > 5% unlocks premium status</li>
     <li>🔄 Run simulations multiple times to optimize (I didn't invent optimization for nothing)</li>
 </ul>
 </div>
 """, unsafe_allow_html=True)
 
 st.markdown("---")
-st.caption("🤖 AI POD Agent Simulation v3.0 | Rick's Multi-Agent Print-On-Demand Arena | Burp")
+st.caption("🤖 AI POD Agent Simulation v3.0 | Dr. Cipher's Multi-Agent Print-On-Demand Arena")
