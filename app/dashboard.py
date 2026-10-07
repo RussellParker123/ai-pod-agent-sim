@@ -72,10 +72,18 @@ st.markdown("""
         box-shadow: 0 0 30px rgba(255, 107, 157, 0.5);
     }
     
-    .rick-sprite {
-        font-size: 80px;
-        margin: 10px 0;
-        animation: rickPulse 2s infinite;
+    .rick-image-container {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        margin: 15px 0;
+        animation: rickBounce 2s infinite;
+    }
+    
+    .rick-image-container img {
+        max-height: 280px;
+        max-width: 280px;
+        filter: drop-shadow(0 0 15px #ff6b9d);
     }
     
     .rick-title {
@@ -184,10 +192,9 @@ st.markdown("""
         50% { transform: scale(1.1); opacity: 0.8; }
     }
     
-    @keyframes rickPulse {
-        0%, 100% { transform: scale(1) rotate(0deg); }
-        25% { transform: scale(1.05) rotate(-2deg); }
-        75% { transform: scale(1.05) rotate(2deg); }
+    @keyframes rickBounce {
+        0%, 100% { transform: translateY(0px); }
+        50% { transform: translateY(-10px); }
     }
     
     /* Dividers */
@@ -270,7 +277,9 @@ else:
 
 rick_html = f"""
 <div class="rick-manager">
-    <div class="rick-sprite">🫠</div>
+    <div class="rick-image-container">
+        <img src="https://raw.githubusercontent.com/RussellParker123/ai-pod-agent-sim/main/assets/rick.png" alt="Rick Sanchez" onerror="this.style.display='none'">
+    </div>
     <div class="rick-title">RICK SANCHEZ - SIMULATION OVERLORD</div>
     <div class="rick-quote">"{rick_quote}"</div>
     <div class="rick-stats">
