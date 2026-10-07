@@ -1,0 +1,983 @@
+{
+  "designs": [
+    {
+      "design_id": "D020",
+      "niche": "retro outdoors",
+      "trend_score": 0.931,
+      "prompt": "Original retro outdoors themed vector-style artwork, minimal, high contrast, commercial-friendly, no logos, no characters, no trademark terms",
+      "image_uri": "sim://images/D020.png",
+      "compliance_status": "pass",
+      "compliance_notes": "no major issues detected",
+      "product_type": "mug",
+      "unit_cost": 6.5,
+      "price": 11.21,
+      "approved": true
+    },
+    {
+      "design_id": "D010",
+      "niche": "pet lovers",
+      "trend_score": 0.919,
+      "prompt": "Original pet lovers themed vector-style artwork, minimal, high contrast, commercial-friendly, no logos, no characters, no trademark terms",
+      "image_uri": "sim://images/D010.png",
+      "compliance_status": "pass",
+      "compliance_notes": "no major issues detected",
+      "product_type": "mug",
+      "unit_cost": 6.5,
+      "price": 11.21,
+      "approved": true
+    },
+    {
+      "design_id": "D024",
+      "niche": "pet lovers",
+      "trend_score": 0.907,
+      "prompt": "Original pet lovers themed vector-style artwork, minimal, high contrast, commercial-friendly, no logos, no characters, no trademark terms",
+      "image_uri": "sim://images/D024.png",
+      "compliance_status": "pass",
+      "compliance_notes": "no major issues detected",
+      "product_type": "tote",
+      "unit_cost": 7.0,
+      "price": 12.07,
+      "approved": true
+    },
+    {
+      "design_id": "D004",
+      "niche": "minimalist motivation",
+      "trend_score": 0.878,
+      "prompt": "Original minimalist motivation themed vector-style artwork, minimal, high contrast, commercial-friendly, no logos, no characters, no trademark terms",
+      "image_uri": "sim://images/D004.png",
+      "compliance_status": "pass",
+      "compliance_notes": "no major issues detected",
+      "product_type": "mug",
+      "unit_cost": 6.5,
+      "price": 11.21,
+      "approved": true
+    },
+    {
+      "design_id": "D017",
+      "niche": "coffee culture",
+      "trend_score": 0.865,
+      "prompt": "Original coffee culture themed vector-style artwork, minimal, high contrast, commercial-friendly, no logos, no characters, no trademark terms",
+      "image_uri": "sim://images/D017.png",
+      "compliance_status": "pass",
+      "compliance_notes": "no major issues detected",
+      "product_type": "mug",
+      "unit_cost": 6.5,
+      "price": 11.21,
+      "approved": true
+    },
+    {
+      "design_id": "D011",
+      "niche": "coffee culture",
+      "trend_score": 0.845,
+      "prompt": "Original coffee culture themed vector-style artwork, minimal, high contrast, commercial-friendly, no logos, no characters, no trademark terms",
+      "image_uri": "sim://images/D011.png",
+      "compliance_status": "pass",
+      "compliance_notes": "no major issues detected",
+      "product_type": "tote",
+      "unit_cost": 7.0,
+      "price": 12.07,
+      "approved": true
+    },
+    {
+      "design_id": "D009",
+      "niche": "pet lovers",
+      "trend_score": 0.844,
+      "prompt": "Original pet lovers themed vector-style artwork, minimal, high contrast, commercial-friendly, no logos, no characters, no trademark terms",
+      "image_uri": "sim://images/D009.png",
+      "compliance_status": "pass",
+      "compliance_notes": "no major issues detected",
+      "product_type": "mug",
+      "unit_cost": 6.5,
+      "price": 11.21,
+      "approved": true
+    },
+    {
+      "design_id": "D022",
+      "niche": "bookish humor",
+      "trend_score": 0.836,
+      "prompt": "Original bookish humor themed vector-style artwork, minimal, high contrast, commercial-friendly, no logos, no characters, no trademark terms",
+      "image_uri": "sim://images/D022.png",
+      "compliance_status": "pass",
+      "compliance_notes": "no major issues detected",
+      "product_type": "tote",
+      "unit_cost": 7.0,
+      "price": 12.07,
+      "approved": true
+    },
+    {
+      "design_id": "D008",
+      "niche": "retro outdoors",
+      "trend_score": 0.827,
+      "prompt": "Original retro outdoors themed vector-style artwork, minimal, high contrast, commercial-friendly, no logos, no characters, no trademark terms",
+      "image_uri": "sim://images/D008.png",
+      "compliance_status": "pass",
+      "compliance_notes": "no major issues detected",
+      "product_type": "tote",
+      "unit_cost": 7.0,
+      "price": 12.07,
+      "approved": true
+    },
+    {
+      "design_id": "D019",
+      "niche": "retro outdoors",
+      "trend_score": 0.816,
+      "prompt": "Original retro outdoors themed vector-style artwork, minimal, high contrast, commercial-friendly, no logos, no characters, no trademark terms",
+      "image_uri": "sim://images/D019.png",
+      "compliance_status": "pass",
+      "compliance_notes": "no major issues detected",
+      "product_type": "tshirt",
+      "unit_cost": 9.0,
+      "price": 15.52,
+      "approved": true
+    },
+    {
+      "design_id": "D012",
+      "niche": "cozy autumn",
+      "trend_score": 0.767,
+      "prompt": "Original cozy autumn themed vector-style artwork, minimal, high contrast, commercial-friendly, no logos, no characters, no trademark terms",
+      "image_uri": "sim://images/D012.png",
+      "compliance_status": "pass",
+      "compliance_notes": "no major issues detected",
+      "product_type": "tote",
+      "unit_cost": 7.0,
+      "price": 12.07,
+      "approved": true
+    },
+    {
+      "design_id": "D013",
+      "niche": "coffee culture",
+      "trend_score": 0.733,
+      "prompt": "Original coffee culture themed vector-style artwork, minimal, high contrast, commercial-friendly, no logos, no characters, no trademark terms",
+      "image_uri": "sim://images/D013.png",
+      "compliance_status": "pass",
+      "compliance_notes": "no major issues detected",
+      "product_type": "mug",
+      "unit_cost": 6.5,
+      "price": 11.21,
+      "approved": true
+    },
+    {
+      "design_id": "D021",
+      "niche": "coffee culture",
+      "trend_score": 0.728,
+      "prompt": "Original coffee culture themed vector-style artwork, minimal, high contrast, commercial-friendly, no logos, no characters, no trademark terms",
+      "image_uri": "sim://images/D021.png",
+      "compliance_status": "pass",
+      "compliance_notes": "no major issues detected",
+      "product_type": "tshirt",
+      "unit_cost": 9.0,
+      "price": 15.52,
+      "approved": true
+    },
+    {
+      "design_id": "D015",
+      "niche": "retro outdoors",
+      "trend_score": 0.708,
+      "prompt": "Original retro outdoors themed vector-style artwork, minimal, high contrast, commercial-friendly, no logos, no characters, no trademark terms",
+      "image_uri": "sim://images/D015.png",
+      "compliance_status": "pass",
+      "compliance_notes": "no major issues detected",
+      "product_type": "tshirt",
+      "unit_cost": 9.0,
+      "price": 15.52,
+      "approved": true
+    },
+    {
+      "design_id": "D007",
+      "niche": "cozy autumn",
+      "trend_score": 0.668,
+      "prompt": "Original cozy autumn themed vector-style artwork, minimal, high contrast, commercial-friendly, no logos, no characters, no trademark terms",
+      "image_uri": "sim://images/D007.png",
+      "compliance_status": "pass",
+      "compliance_notes": "no major issues detected",
+      "product_type": "mug",
+      "unit_cost": 6.5,
+      "price": 11.21,
+      "approved": true
+    },
+    {
+      "design_id": "D005",
+      "niche": "cozy autumn",
+      "trend_score": 0.629,
+      "prompt": "Original cozy autumn themed vector-style artwork, minimal, high contrast, commercial-friendly, no logos, no characters, no trademark terms",
+      "image_uri": "sim://images/D005.png",
+      "compliance_status": "pass",
+      "compliance_notes": "no major issues detected",
+      "product_type": "tshirt",
+      "unit_cost": 9.0,
+      "price": 15.52,
+      "approved": true
+    },
+    {
+      "design_id": "D018",
+      "niche": "pet lovers",
+      "trend_score": 0.589,
+      "prompt": "Original pet lovers themed vector-style artwork, minimal, high contrast, commercial-friendly, no logos, no characters, no trademark terms",
+      "image_uri": "sim://images/D018.png",
+      "compliance_status": "pass",
+      "compliance_notes": "no major issues detected",
+      "product_type": "mug",
+      "unit_cost": 6.5,
+      "price": 11.21,
+      "approved": true
+    }
+  ],
+  "results": [
+    {
+      "design_id": "D020",
+      "views": 2459,
+      "clicks": 212,
+      "ctr": 0.0862,
+      "conversion_rate": 0.0472,
+      "orders": 10,
+      "revenue": 112.1,
+      "cogs": 65.0,
+      "profit": 47.1
+    },
+    {
+      "design_id": "D010",
+      "views": 639,
+      "clicks": 64,
+      "ctr": 0.1002,
+      "conversion_rate": 0.0156,
+      "orders": 1,
+      "revenue": 11.21,
+      "cogs": 6.5,
+      "profit": 4.71
+    },
+    {
+      "design_id": "D024",
+      "views": 1632,
+      "clicks": 137,
+      "ctr": 0.0839,
+      "conversion_rate": 0.0584,
+      "orders": 8,
+      "revenue": 96.56,
+      "cogs": 56.0,
+      "profit": 40.56
+    },
+    {
+      "design_id": "D004",
+      "views": 609,
+      "clicks": 13,
+      "ctr": 0.0213,
+      "conversion_rate": 0.0,
+      "orders": 0,
+      "revenue": 0.0,
+      "cogs": 0.0,
+      "profit": 0.0
+    },
+    {
+      "design_id": "D017",
+      "views": 1971,
+      "clicks": 150,
+      "ctr": 0.0761,
+      "conversion_rate": 0.0267,
+      "orders": 4,
+      "revenue": 44.84,
+      "cogs": 26.0,
+      "profit": 18.84
+    },
+    {
+      "design_id": "D011",
+      "views": 2270,
+      "clicks": 40,
+      "ctr": 0.0176,
+      "conversion_rate": 0.025,
+      "orders": 1,
+      "revenue": 12.07,
+      "cogs": 7.0,
+      "profit": 5.07
+    },
+    {
+      "design_id": "D009",
+      "views": 2090,
+      "clicks": 182,
+      "ctr": 0.0871,
+      "conversion_rate": 0.0165,
+      "orders": 3,
+      "revenue": 33.63,
+      "cogs": 19.5,
+      "profit": 14.13
+    },
+    {
+      "design_id": "D022",
+      "views": 818,
+      "clicks": 15,
+      "ctr": 0.0183,
+      "conversion_rate": 0.0,
+      "orders": 0,
+      "revenue": 0.0,
+      "cogs": 0.0,
+      "profit": 0.0
+    },
+    {
+      "design_id": "D008",
+      "views": 1842,
+      "clicks": 40,
+      "ctr": 0.0217,
+      "conversion_rate": 0.05,
+      "orders": 2,
+      "revenue": 24.14,
+      "cogs": 14.0,
+      "profit": 10.14
+    },
+    {
+      "design_id": "D019",
+      "views": 968,
+      "clicks": 26,
+      "ctr": 0.0269,
+      "conversion_rate": 0.0,
+      "orders": 0,
+      "revenue": 0.0,
+      "cogs": 0.0,
+      "profit": 0.0
+    },
+    {
+      "design_id": "D012",
+      "views": 1703,
+      "clicks": 111,
+      "ctr": 0.0652,
+      "conversion_rate": 0.0631,
+      "orders": 7,
+      "revenue": 84.49,
+      "cogs": 49.0,
+      "profit": 35.49
+    },
+    {
+      "design_id": "D013",
+      "views": 871,
+      "clicks": 51,
+      "ctr": 0.0586,
+      "conversion_rate": 0.0196,
+      "orders": 1,
+      "revenue": 11.21,
+      "cogs": 6.5,
+      "profit": 4.71
+    },
+    {
+      "design_id": "D021",
+      "views": 1095,
+      "clicks": 84,
+      "ctr": 0.0767,
+      "conversion_rate": 0.0595,
+      "orders": 5,
+      "revenue": 77.6,
+      "cogs": 45.0,
+      "profit": 32.6
+    },
+    {
+      "design_id": "D015",
+      "views": 1475,
+      "clicks": 74,
+      "ctr": 0.0502,
+      "conversion_rate": 0.0135,
+      "orders": 1,
+      "revenue": 15.52,
+      "cogs": 9.0,
+      "profit": 6.52
+    },
+    {
+      "design_id": "D007",
+      "views": 785,
+      "clicks": 37,
+      "ctr": 0.0471,
+      "conversion_rate": 0.0541,
+      "orders": 2,
+      "revenue": 22.42,
+      "cogs": 13.0,
+      "profit": 9.42
+    },
+    {
+      "design_id": "D005",
+      "views": 478,
+      "clicks": 7,
+      "ctr": 0.0146,
+      "conversion_rate": 0.0,
+      "orders": 0,
+      "revenue": 0.0,
+      "cogs": 0.0,
+      "profit": 0.0
+    },
+    {
+      "design_id": "D018",
+      "views": 1802,
+      "clicks": 44,
+      "ctr": 0.0244,
+      "conversion_rate": 0.0227,
+      "orders": 1,
+      "revenue": 11.21,
+      "cogs": 6.5,
+      "profit": 4.71
+    }
+  ],
+  "manager": {
+    "decision_counts": {
+      "keep": 24,
+      "drop": 7,
+      "note": 2,
+      "retry": 7,
+      "greenlight": 17
+    },
+    "approved": 17,
+    "total_revenue": 557.0,
+    "total_profit": 234.0,
+    "batch": {
+      "status": "GO",
+      "counts": {
+        "GREENLIGHT": 17
+      },
+      "flag_rate": 0.0
+    },
+    "design_scores": {
+      "D020": {
+        "score": 0.842,
+        "components": {
+          "trend": 0.931,
+          "compliance": 1.0,
+          "margin": 0.84,
+          "fit": 0.7,
+          "diversity": 0.25
+        },
+        "manager_decision": "GREENLIGHT",
+        "coach": ""
+      },
+      "D010": {
+        "score": 0.854,
+        "components": {
+          "trend": 0.919,
+          "compliance": 1.0,
+          "margin": 0.84,
+          "fit": 0.85,
+          "diversity": 0.25
+        },
+        "manager_decision": "GREENLIGHT",
+        "coach": ""
+      },
+      "D024": {
+        "score": 0.845,
+        "components": {
+          "trend": 0.907,
+          "compliance": 1.0,
+          "margin": 0.84,
+          "fit": 0.8,
+          "diversity": 0.25
+        },
+        "manager_decision": "GREENLIGHT",
+        "coach": ""
+      },
+      "D004": {
+        "score": 0.911,
+        "components": {
+          "trend": 0.878,
+          "compliance": 1.0,
+          "margin": 0.84,
+          "fit": 0.8,
+          "diversity": 1.0
+        },
+        "manager_decision": "GREENLIGHT",
+        "coach": ""
+      },
+      "D017": {
+        "score": 0.848,
+        "components": {
+          "trend": 0.865,
+          "compliance": 1.0,
+          "margin": 0.84,
+          "fit": 0.95,
+          "diversity": 0.25
+        },
+        "manager_decision": "GREENLIGHT",
+        "coach": ""
+      },
+      "D011": {
+        "score": 0.807,
+        "components": {
+          "trend": 0.845,
+          "compliance": 1.0,
+          "margin": 0.84,
+          "fit": 0.6,
+          "diversity": 0.25
+        },
+        "manager_decision": "GREENLIGHT",
+        "coach": ""
+      },
+      "D009": {
+        "score": 0.831,
+        "components": {
+          "trend": 0.844,
+          "compliance": 1.0,
+          "margin": 0.84,
+          "fit": 0.85,
+          "diversity": 0.25
+        },
+        "manager_decision": "GREENLIGHT",
+        "coach": ""
+      },
+      "D022": {
+        "score": 0.909,
+        "components": {
+          "trend": 0.836,
+          "compliance": 1.0,
+          "margin": 0.84,
+          "fit": 0.9,
+          "diversity": 1.0
+        },
+        "manager_decision": "GREENLIGHT",
+        "coach": ""
+      },
+      "D008": {
+        "score": 0.811,
+        "components": {
+          "trend": 0.827,
+          "compliance": 1.0,
+          "margin": 0.84,
+          "fit": 0.7,
+          "diversity": 0.25
+        },
+        "manager_decision": "GREENLIGHT",
+        "coach": ""
+      },
+      "D019": {
+        "score": 0.833,
+        "components": {
+          "trend": 0.816,
+          "compliance": 1.0,
+          "margin": 0.84,
+          "fit": 0.95,
+          "diversity": 0.25
+        },
+        "manager_decision": "GREENLIGHT",
+        "coach": ""
+      },
+      "D012": {
+        "score": 0.818,
+        "components": {
+          "trend": 0.767,
+          "compliance": 1.0,
+          "margin": 0.84,
+          "fit": 0.7,
+          "diversity": 0.5
+        },
+        "manager_decision": "GREENLIGHT",
+        "coach": ""
+      },
+      "D013": {
+        "score": 0.808,
+        "components": {
+          "trend": 0.733,
+          "compliance": 1.0,
+          "margin": 0.84,
+          "fit": 0.95,
+          "diversity": 0.25
+        },
+        "manager_decision": "GREENLIGHT",
+        "coach": ""
+      },
+      "D021": {
+        "score": 0.771,
+        "components": {
+          "trend": 0.728,
+          "compliance": 1.0,
+          "margin": 0.84,
+          "fit": 0.6,
+          "diversity": 0.25
+        },
+        "manager_decision": "GREENLIGHT",
+        "coach": ""
+      },
+      "D015": {
+        "score": 0.8,
+        "components": {
+          "trend": 0.708,
+          "compliance": 1.0,
+          "margin": 0.84,
+          "fit": 0.95,
+          "diversity": 0.25
+        },
+        "manager_decision": "GREENLIGHT",
+        "coach": ""
+      },
+      "D007": {
+        "score": 0.808,
+        "components": {
+          "trend": 0.668,
+          "compliance": 1.0,
+          "margin": 0.84,
+          "fit": 0.9,
+          "diversity": 0.5
+        },
+        "manager_decision": "GREENLIGHT",
+        "coach": ""
+      },
+      "D005": {
+        "score": 0.777,
+        "components": {
+          "trend": 0.629,
+          "compliance": 1.0,
+          "margin": 0.84,
+          "fit": 0.7,
+          "diversity": 0.5
+        },
+        "manager_decision": "GREENLIGHT",
+        "coach": ""
+      },
+      "D018": {
+        "score": 0.755,
+        "components": {
+          "trend": 0.589,
+          "compliance": 1.0,
+          "margin": 0.84,
+          "fit": 0.85,
+          "diversity": 0.25
+        },
+        "manager_decision": "GREENLIGHT",
+        "coach": ""
+      }
+    },
+    "decisions": [
+      {
+        "stage": "trend",
+        "design_id": "D020",
+        "action": "keep",
+        "reason": "strong trend, niche diversity ok"
+      },
+      {
+        "stage": "trend",
+        "design_id": "D010",
+        "action": "keep",
+        "reason": "strong trend, niche diversity ok"
+      },
+      {
+        "stage": "trend",
+        "design_id": "D024",
+        "action": "keep",
+        "reason": "strong trend, niche diversity ok"
+      },
+      {
+        "stage": "trend",
+        "design_id": "D004",
+        "action": "keep",
+        "reason": "strong trend, niche diversity ok"
+      },
+      {
+        "stage": "trend",
+        "design_id": "D017",
+        "action": "keep",
+        "reason": "strong trend, niche diversity ok"
+      },
+      {
+        "stage": "trend",
+        "design_id": "D011",
+        "action": "keep",
+        "reason": "strong trend, niche diversity ok"
+      },
+      {
+        "stage": "trend",
+        "design_id": "D009",
+        "action": "keep",
+        "reason": "strong trend, niche diversity ok"
+      },
+      {
+        "stage": "trend",
+        "design_id": "D022",
+        "action": "keep",
+        "reason": "strong trend, niche diversity ok"
+      },
+      {
+        "stage": "trend",
+        "design_id": "D008",
+        "action": "keep",
+        "reason": "strong trend, niche diversity ok"
+      },
+      {
+        "stage": "trend",
+        "design_id": "D019",
+        "action": "keep",
+        "reason": "strong trend, niche diversity ok"
+      },
+      {
+        "stage": "trend",
+        "design_id": "D012",
+        "action": "keep",
+        "reason": "strong trend, niche diversity ok"
+      },
+      {
+        "stage": "trend",
+        "design_id": "D013",
+        "action": "keep",
+        "reason": "strong trend, niche diversity ok"
+      },
+      {
+        "stage": "trend",
+        "design_id": "D021",
+        "action": "keep",
+        "reason": "strong trend, niche diversity ok"
+      },
+      {
+        "stage": "trend",
+        "design_id": "D015",
+        "action": "keep",
+        "reason": "strong trend, niche diversity ok"
+      },
+      {
+        "stage": "trend",
+        "design_id": "D007",
+        "action": "keep",
+        "reason": "strong trend, niche diversity ok"
+      },
+      {
+        "stage": "trend",
+        "design_id": "D005",
+        "action": "keep",
+        "reason": "strong trend, niche diversity ok"
+      },
+      {
+        "stage": "trend",
+        "design_id": "D002",
+        "action": "drop",
+        "reason": "niche 'retro outdoors' at cap 4"
+      },
+      {
+        "stage": "trend",
+        "design_id": "D006",
+        "action": "drop",
+        "reason": "niche 'coffee culture' at cap 4"
+      },
+      {
+        "stage": "trend",
+        "design_id": "D018",
+        "action": "keep",
+        "reason": "strong trend, niche diversity ok"
+      },
+      {
+        "stage": "trend",
+        "design_id": "D014",
+        "action": "drop",
+        "reason": "trend 0.521 < 0.55"
+      },
+      {
+        "stage": "trend",
+        "design_id": "D016",
+        "action": "drop",
+        "reason": "trend 0.517 < 0.55"
+      },
+      {
+        "stage": "trend",
+        "design_id": "D001",
+        "action": "drop",
+        "reason": "trend 0.513 < 0.55"
+      },
+      {
+        "stage": "trend",
+        "design_id": "D003",
+        "action": "drop",
+        "reason": "trend 0.476 < 0.55"
+      },
+      {
+        "stage": "trend",
+        "design_id": "D023",
+        "action": "drop",
+        "reason": "trend 0.469 < 0.55"
+      },
+      {
+        "stage": "compliance",
+        "design_id": "-",
+        "action": "note",
+        "reason": "flag rate 41% is high: tighten prompts"
+      },
+      {
+        "stage": "compliance",
+        "design_id": "D020",
+        "action": "retry",
+        "reason": "re-check after flag: possible trademark phrase risk"
+      },
+      {
+        "stage": "compliance",
+        "design_id": "D010",
+        "action": "retry",
+        "reason": "re-check after flag: possible trademark phrase risk; style similarity risk"
+      },
+      {
+        "stage": "compliance",
+        "design_id": "D004",
+        "action": "retry",
+        "reason": "re-check after flag: possible trademark phrase risk"
+      },
+      {
+        "stage": "compliance",
+        "design_id": "D017",
+        "action": "retry",
+        "reason": "re-check after flag: possible trademark phrase risk"
+      },
+      {
+        "stage": "compliance",
+        "design_id": "D009",
+        "action": "retry",
+        "reason": "re-check after flag: possible trademark phrase risk"
+      },
+      {
+        "stage": "compliance",
+        "design_id": "D012",
+        "action": "retry",
+        "reason": "re-check after flag: style similarity risk"
+      },
+      {
+        "stage": "compliance",
+        "design_id": "D007",
+        "action": "retry",
+        "reason": "re-check after flag: style similarity risk"
+      },
+      {
+        "stage": "compliance",
+        "design_id": "D020",
+        "action": "keep",
+        "reason": "passed on retry"
+      },
+      {
+        "stage": "compliance",
+        "design_id": "D010",
+        "action": "keep",
+        "reason": "passed on retry"
+      },
+      {
+        "stage": "compliance",
+        "design_id": "D004",
+        "action": "keep",
+        "reason": "passed on retry"
+      },
+      {
+        "stage": "compliance",
+        "design_id": "D017",
+        "action": "keep",
+        "reason": "passed on retry"
+      },
+      {
+        "stage": "compliance",
+        "design_id": "D009",
+        "action": "keep",
+        "reason": "passed on retry"
+      },
+      {
+        "stage": "compliance",
+        "design_id": "D012",
+        "action": "keep",
+        "reason": "passed on retry"
+      },
+      {
+        "stage": "compliance",
+        "design_id": "D007",
+        "action": "keep",
+        "reason": "passed on retry"
+      },
+      {
+        "stage": "approval",
+        "design_id": "D020",
+        "action": "greenlight",
+        "reason": "score 0.842"
+      },
+      {
+        "stage": "approval",
+        "design_id": "D010",
+        "action": "greenlight",
+        "reason": "score 0.854"
+      },
+      {
+        "stage": "approval",
+        "design_id": "D024",
+        "action": "greenlight",
+        "reason": "score 0.845"
+      },
+      {
+        "stage": "approval",
+        "design_id": "D004",
+        "action": "greenlight",
+        "reason": "score 0.911"
+      },
+      {
+        "stage": "approval",
+        "design_id": "D017",
+        "action": "greenlight",
+        "reason": "score 0.848"
+      },
+      {
+        "stage": "approval",
+        "design_id": "D011",
+        "action": "greenlight",
+        "reason": "score 0.807"
+      },
+      {
+        "stage": "approval",
+        "design_id": "D009",
+        "action": "greenlight",
+        "reason": "score 0.831"
+      },
+      {
+        "stage": "approval",
+        "design_id": "D022",
+        "action": "greenlight",
+        "reason": "score 0.909"
+      },
+      {
+        "stage": "approval",
+        "design_id": "D008",
+        "action": "greenlight",
+        "reason": "score 0.811"
+      },
+      {
+        "stage": "approval",
+        "design_id": "D019",
+        "action": "greenlight",
+        "reason": "score 0.833"
+      },
+      {
+        "stage": "approval",
+        "design_id": "D012",
+        "action": "greenlight",
+        "reason": "score 0.818"
+      },
+      {
+        "stage": "approval",
+        "design_id": "D013",
+        "action": "greenlight",
+        "reason": "score 0.808"
+      },
+      {
+        "stage": "approval",
+        "design_id": "D021",
+        "action": "greenlight",
+        "reason": "score 0.771"
+      },
+      {
+        "stage": "approval",
+        "design_id": "D015",
+        "action": "greenlight",
+        "reason": "score 0.8"
+      },
+      {
+        "stage": "approval",
+        "design_id": "D007",
+        "action": "greenlight",
+        "reason": "score 0.808"
+      },
+      {
+        "stage": "approval",
+        "design_id": "D005",
+        "action": "greenlight",
+        "reason": "score 0.777"
+      },
+      {
+        "stage": "approval",
+        "design_id": "D018",
+        "action": "greenlight",
+        "reason": "score 0.755"
+      },
+      {
+        "stage": "approval",
+        "design_id": "-",
+        "action": "note",
+        "reason": "Batch launch recommendation: GO"
+      }
+    ]
+  }
+}
