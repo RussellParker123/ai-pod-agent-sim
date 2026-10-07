@@ -1,5 +1,7 @@
 import argparse
+import json
 import logging
+from pathlib import Path
 
 from app.connectors.etsy_connector import (
     EtsyConnector,
@@ -18,12 +20,19 @@ from app.sim.agents import (
 from app.sim.research import research_agent, apply_research
 from app.sim.manager import ManagerAgent
 from app.sim.utils import DATA_DIR, save_json, timestamp
+from app.sim.team import AgentTeam
+from app.sim.approvals import final_review_status, load_review_overrides
 
 
 log = logging.getLogger(__name__)
 
 
-def run_once(etsy_mode: bool = False, real: bool = False, draft_only: bool = False) -> str:
+def run_once(
+    etsy_mode: bool = False,
+    real: bool = False,
+    draft_only: bool = False,
+    team: AgentTeam = None,
+) -> str:
     configure_etsy_logging(DATA_DIR / "etsy_api.log")
     etsy_connector = EtsyConnector.from_environment() if etsy_mode else None
     if etsy_connector:
@@ -43,6 +52,7 @@ def run_once(etsy_mode: bool = False, real: bool = False, draft_only: bool = Fal
         "bookish humor",
         "coffee culture",
     ]
+    team = team or AgentTeam()
     manager = ManagerAgent()
 
     research = research_agent(niches, etsy_connector=etsy_connector)
@@ -50,18 +60,21 @@ def run_once(etsy_mode: bool = False, real: bool = False, draft_only: bool = Fal
     apply_research(designs, research)  # research -> trend/prompt departments
     designs = manager.review_trends(designs)
 
-    prompt_agent(designs)
-    image_agent(designs)
+    team.run_stage("prompt", designs, prompt_agent)
+    team.run_stage("image", designs, image_agent)
     compliance_check = lambda items: compliance_agent(
         items, etsy_connector=etsy_connector
     )
-    compliance_check(designs)
+    team.run_stage("compliance", designs, compliance_check)
     manager.review_compliance(designs, recheck=compliance_check)
 
-    mockup_agent(
-        designs, preferred_product_types=research["top_product_types"]
+    team.run_stage(
+        "mockup",
+        designs,
+        mockup_agent,
+        preferred_product_types=research["top_product_types"],
     )
-    pricing_agent(designs, target_margin=0.42)
+    team.run_stage("pricing", designs, pricing_agent, target_margin=0.42)
     manager.review_pricing(designs)
     manager.score_and_decide(designs)  # GREENLIGHT / HOLD / BLOCK + batch status
 
@@ -69,6 +82,7 @@ def run_once(etsy_mode: bool = False, real: bool = False, draft_only: bool = Fal
     payload = to_serializable(designs, results)
     payload["research"] = research
     payload["manager"] = manager.report(designs, results)
+    payload["team"] = team.report()
 
     if real or draft_only:
         from app.marketplace.adapter import get_adapter
@@ -86,6 +100,44 @@ def run_once(etsy_mode: bool = False, real: bool = False, draft_only: bool = Fal
     return str(path)
 
 
+def publish_reviewed_run(
+    run_name: str,
+    real: bool = False,
+    draft_only: bool = False,
+) -> str:
+    if Path(run_name).name != run_name or not run_name.startswith("run_") or not run_name.endswith(".json"):
+        raise ValueError("Choose a run_*.json file from the data directory")
+
+    run_path = DATA_DIR / run_name
+    payload = json.loads(run_path.read_text(encoding="utf-8"))
+    manager = payload.get("manager", {})
+    scores = manager.get("design_scores", {})
+    overrides = load_review_overrides(run_name, DATA_DIR / "overrides.json")
+    statuses = {}
+    eligible = []
+    for design in payload.get("designs", []):
+        design_id = design.get("design_id")
+        decision = scores.get(design_id, {}).get("manager_decision", "BLOCK")
+        status = final_review_status(
+            decision, design.get("compliance_status", "pending"), overrides.get(design_id, "none")
+        )
+        statuses[design_id] = status
+        if status in ("APPROVED", "FORCE_APPROVED"):
+            eligible.append(design)
+
+    from app.marketplace.adapter import get_adapter
+
+    adapter = get_adapter("etsy", draft_only=draft_only)
+    payload["review_status"] = statuses
+    payload["marketplace_listings"] = [
+        {"design_id": design["design_id"], **adapter.list_design(design, real=real)}
+        for design in eligible
+    ]
+    output_path = DATA_DIR / f"published_{run_name}"
+    output_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    return str(output_path)
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Run the AI POD agent simulation.")
     parser.add_argument(
@@ -95,6 +147,10 @@ if __name__ == "__main__":
     )
     parser.add_argument("--real", action="store_true", help="publish approved designs to Etsy (default: simulate)")
     parser.add_argument("--draft-only", action="store_true", help="save listings as drafts instead of active")
+    parser.add_argument(
+        "--publish-run",
+        help="publish a previously reviewed run; requires saved per-design approvals",
+    )
     parser.add_argument("--yes", action="store_true", help="skip the confirmation prompt for --real")
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
@@ -105,5 +161,12 @@ if __name__ == "__main__":
         if input(f"Create real {kind} Etsy listings for approved designs? [y/N] ").strip().lower() != "y":
             print("Not confirmed; running in simulation mode.")
             real = False
-    p = run_once(etsy_mode=args.etsy_mode, real=real, draft_only=args.draft_only)
+    if args.publish_run:
+        if args.real and not real:
+            raise SystemExit(0)
+        if not real:
+            parser.error("--publish-run requires --real")
+        p = publish_reviewed_run(args.publish_run, real=real, draft_only=args.draft_only)
+    else:
+        p = run_once(etsy_mode=args.etsy_mode, real=real, draft_only=args.draft_only)
     print(f"Simulation complete. Output: {p}")
