@@ -5,10 +5,10 @@ from app.sim.agents import (
     compliance_agent,
     mockup_agent,
     pricing_agent,
-    approval_gate,
     listing_simulator,
     to_serializable,
 )
+from app.sim.manager import ManagerAgent
 from app.sim.utils import save_json, timestamp
 
 
@@ -21,20 +21,26 @@ def run_once() -> str:
         "bookish humor",
         "coffee culture",
     ]
+    manager = ManagerAgent()
 
     designs = trend_agent(niches=niches, k=24)
+    designs = manager.review_trends(designs)          # manager filters trends
+
     prompt_agent(designs)
     image_agent(designs)
     compliance_agent(designs)
+    manager.review_compliance(designs, recheck=compliance_agent)  # retry, then reject
+
     mockup_agent(designs)
     pricing_agent(designs, target_margin=0.42)
-    approval_gate(designs, auto_approve_safe=True)
+    manager.review_pricing(designs)                   # enforce margin floor
+    manager.final_approval(designs)                   # recommend approvals
 
     results = listing_simulator(designs)
     payload = to_serializable(designs, results)
+    payload["manager"] = manager.report(designs, results)
 
-    fname = f"run_{timestamp()}.json"
-    path = save_json(payload, fname)
+    path = save_json(payload, f"run_{timestamp()}.json")
     return str(path)
 
 
