@@ -20,15 +20,29 @@ if not mgr:
     st.info("This run has no manager data. Generate a new run.")
     st.stop()
 
+batch = mgr.get("batch", {})
+status = batch.get("status", "n/a")
+{"GO": st.success, "PARTIAL": st.warning, "NO-GO": st.error}.get(status, st.info)(
+    f"Batch launch recommendation: {status}"
+)
+
 c1, c2, c3 = st.columns(3)
-c1.metric("Approved", mgr["approved"])
-c2.metric("Revenue", f"${mgr['total_revenue']:,.2f}")
-c3.metric("Profit", f"${mgr['total_profit']:,.2f}")
+c1.metric("Greenlit", mgr["approved"])
+c2.metric("Revenue (sim)", f"${mgr['total_revenue']:,.2f}")
+c3.metric("Profit (sim)", f"${mgr['total_profit']:,.2f}")
+
+scores = pd.DataFrame(
+    [{"design_id": k, "score": v["score"], "decision": v["manager_decision"], "coach": v["coach"]}
+     for k, v in mgr.get("design_scores", {}).items()]
+)
+if not scores.empty:
+    st.plotly_chart(px.histogram(scores, x="score", color="decision", nbins=15, title="Score distribution"),
+                    use_container_width=True)
+    st.subheader("Coach feedback for HOLD designs")
+    st.dataframe(scores[scores["decision"] == "HOLD"], use_container_width=True)
 
 dec = pd.DataFrame(mgr["decisions"])
 counts = dec.groupby(["stage", "action"], as_index=False).size()
 st.plotly_chart(px.bar(counts, x="stage", y="size", color="action", title="Manager decisions by stage"),
                 use_container_width=True)
-
-stage = st.multiselect("Filter stage", sorted(dec["stage"].unique()), default=list(dec["stage"].unique()))
-st.dataframe(dec[dec["stage"].isin(stage)], use_container_width=True)
+st.dataframe(dec, use_container_width=True)

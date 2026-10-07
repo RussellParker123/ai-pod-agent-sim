@@ -24,17 +24,17 @@ def run_once() -> str:
     manager = ManagerAgent()
 
     designs = trend_agent(niches=niches, k=24)
-    designs = manager.review_trends(designs)          # manager filters trends
+    designs = manager.review_trends(designs)
 
     prompt_agent(designs)
     image_agent(designs)
     compliance_agent(designs)
-    manager.review_compliance(designs, recheck=compliance_agent)  # retry, then reject
+    manager.review_compliance(designs, recheck=compliance_agent)
 
     mockup_agent(designs)
     pricing_agent(designs, target_margin=0.42)
-    manager.review_pricing(designs)                   # enforce margin floor
-    manager.final_approval(designs)                   # recommend approvals
+    manager.review_pricing(designs)
+    manager.score_and_decide(designs)  # GREENLIGHT / HOLD / BLOCK + batch status
 
     results = listing_simulator(designs)
     payload = to_serializable(designs, results)
