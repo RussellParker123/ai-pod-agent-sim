@@ -1,6 +1,10 @@
 import argparse
 import logging
 
+from app.connectors.etsy_connector import (
+    EtsyConnector,
+    configure_etsy_logging,
+)
 from app.sim.agents import (
     trend_agent,
     prompt_agent,
@@ -12,13 +16,24 @@ from app.sim.agents import (
     to_serializable,
 )
 from app.sim.manager import ManagerAgent
-from app.sim.utils import save_json, timestamp
+from app.sim.utils import DATA_DIR, save_json, timestamp
 
 
 log = logging.getLogger(__name__)
 
 
-def run_once(real: bool = False, draft_only: bool = False) -> str:
+def run_once(etsy_mode: bool = False, real: bool = False, draft_only: bool = False) -> str:
+    configure_etsy_logging(DATA_DIR / "etsy_api.log")
+    etsy_connector = EtsyConnector.from_environment() if etsy_mode else None
+    if etsy_connector:
+        logging.getLogger("app.connectors.etsy_connector").info(
+            "Etsy integration enabled for shop %s", etsy_connector.shop_id
+        )
+    else:
+        logging.getLogger("app.connectors.etsy_connector").info(
+            "Etsy integration unavailable; using mock behavior"
+        )
+
     niches = [
         "cozy autumn",
         "pet lovers",
@@ -29,13 +44,16 @@ def run_once(real: bool = False, draft_only: bool = False) -> str:
     ]
     manager = ManagerAgent()
 
-    designs = trend_agent(niches=niches, k=24)
+    designs = trend_agent(niches=niches, k=24, etsy_connector=etsy_connector)
     designs = manager.review_trends(designs)
 
     prompt_agent(designs)
     image_agent(designs)
-    compliance_agent(designs)
-    manager.review_compliance(designs, recheck=compliance_agent)
+    compliance_check = lambda items: compliance_agent(
+        items, etsy_connector=etsy_connector
+    )
+    compliance_check(designs)
+    manager.review_compliance(designs, recheck=compliance_check)
 
     mockup_agent(designs)
     pricing_agent(designs, target_margin=0.42)
@@ -63,11 +81,16 @@ def run_once(real: bool = False, draft_only: bool = False) -> str:
 
 
 if __name__ == "__main__":
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--real", action="store_true", help="publish approved designs to Etsy (default: simulate)")
-    ap.add_argument("--draft-only", action="store_true", help="save listings as drafts instead of active")
-    ap.add_argument("--yes", action="store_true", help="skip the confirmation prompt for --real")
-    args = ap.parse_args()
+    parser = argparse.ArgumentParser(description="Run the AI POD agent simulation.")
+    parser.add_argument(
+        "--etsy-mode",
+        action="store_true",
+        help="Use read-only Etsy store data when credentials are configured.",
+    )
+    parser.add_argument("--real", action="store_true", help="publish approved designs to Etsy (default: simulate)")
+    parser.add_argument("--draft-only", action="store_true", help="save listings as drafts instead of active")
+    parser.add_argument("--yes", action="store_true", help="skip the confirmation prompt for --real")
+    args = parser.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
 
     real = args.real
@@ -76,5 +99,5 @@ if __name__ == "__main__":
         if input(f"Create real {kind} Etsy listings for approved designs? [y/N] ").strip().lower() != "y":
             print("Not confirmed; running in simulation mode.")
             real = False
-    p = run_once(real=real, draft_only=args.draft_only)
+    p = run_once(etsy_mode=args.etsy_mode, real=real, draft_only=args.draft_only)
     print(f"Simulation complete. Output: {p}")

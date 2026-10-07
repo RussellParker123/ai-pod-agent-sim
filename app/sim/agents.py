@@ -1,6 +1,11 @@
 from dataclasses import dataclass, asdict
 from typing import List, Dict
+import logging
 import random
+import re
+
+
+LOGGER = logging.getLogger(__name__)
 
 
 @dataclass
@@ -31,7 +36,42 @@ class ListingResult:
     profit: float
 
 
-def trend_agent(niches: List[str], k: int = 12) -> List[Design]:
+def trend_agent(niches: List[str], k: int = 12, etsy_connector=None) -> List[Design]:
+    if etsy_connector:
+        try:
+            trends = etsy_connector.get_top_trending_search_terms(limit=10)
+            if trends:
+                designs = []
+                counts = [
+                    int(trend.get("count", 0))
+                    for trend in trends
+                    if isinstance(trend, dict)
+                ]
+                max_count = max(counts, default=0)
+                for i, trend in enumerate(trends[: min(k, 10)]):
+                    if isinstance(trend, dict):
+                        niche = str(trend.get("term", "")).strip()
+                        count = int(trend.get("count", 0))
+                    else:
+                        niche, count = str(trend).strip(), 0
+                    if niche:
+                        score = (
+                            0.55 + 0.4 * count / max_count
+                            if max_count
+                            else 0.95 - 0.4 * i / max(1, len(trends))
+                        )
+                        designs.append(
+                            Design(
+                                design_id=f"D{i+1:03}",
+                                niche=niche,
+                                trend_score=round(score, 3),
+                            )
+                        )
+                if designs:
+                    return designs
+        except Exception as exc:
+            LOGGER.warning("Etsy trends unavailable; using simulated trends: %s", exc)
+
     picks = []
     for i in range(k):
         niche = random.choice(niches)
@@ -58,11 +98,43 @@ def image_agent(designs: List[Design]) -> None:
         d.image_uri = f"sim://images/{d.design_id}.png"
 
 
-def compliance_agent(designs: List[Design]) -> None:
+def compliance_agent(designs: List[Design], etsy_connector=None) -> None:
+    historical_items = None
+    if etsy_connector:
+        try:
+            historical_items = etsy_connector.get_historical_flagged_items()
+        except Exception as exc:
+            LOGGER.warning(
+                "Etsy compliance references unavailable; using simulated checks: %s",
+                exc,
+            )
+
     for d in designs:
-        # simple probabilistic checks for simulation
-        trademark_risk = random.random() < 0.12
-        similarity_risk = random.random() < 0.10
+        if historical_items is None:
+            # Preserve the mock checks when Etsy is disabled or unavailable.
+            trademark_risk = random.random() < 0.12
+            similarity_risk = random.random() < 0.10
+        else:
+            trademark_risk = False
+            similarity_risk = False
+        matched_item = None
+        if historical_items is not None:
+            design_terms = set(re.findall(r"[a-z0-9]+", d.niche.lower()))
+            for item in historical_items:
+                item_terms = set(
+                    re.findall(
+                        r"[a-z0-9]+",
+                        " ".join(
+                            [str(item.get("title", ""))]
+                            + [str(tag) for tag in item.get("tags", [])]
+                        ).lower(),
+                    )
+                )
+                shared = design_terms & item_terms
+                if len(shared) >= 2 and len(shared) / max(1, len(design_terms)) >= 0.5:
+                    matched_item = item
+                    similarity_risk = True
+                    break
         if trademark_risk or similarity_risk:
             d.compliance_status = "flagged"
             notes = []
@@ -70,6 +142,11 @@ def compliance_agent(designs: List[Design]) -> None:
                 notes.append("possible trademark phrase risk")
             if similarity_risk:
                 notes.append("style similarity risk")
+            if matched_item:
+                notes.append(
+                    "similarity to historical inactive listing: "
+                    + str(matched_item.get("title", "untitled"))
+                )
             d.compliance_notes = "; ".join(notes)
         else:
             d.compliance_status = "pass"
