@@ -53,7 +53,7 @@ def run_once(
         "coffee culture",
     ]
     team = team or AgentTeam()
-    manager = ManagerAgent()
+    manager = ManagerAgent(manager_id=team.manager_id)
 
     research = research_agent(niches, etsy_connector=etsy_connector)
     designs = trend_agent(niches=niches, k=24, etsy_connector=etsy_connector)
