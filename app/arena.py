@@ -3,10 +3,13 @@ import json
 
 STATIONS = [
     ("Trend", "🎯", "Trend Lab", "finds trending niches"),
+    ("Research", "🔎", "Market Research", "reviews shop tag signals"),
+    ("Design", "💡", "Design Studio", "creates original concepts"),
     ("Prompt", "📝", "Prompt Workshop", "writes prompts"),
     ("Image", "🎨", "Image Studio", "generates images"),
     ("Compliance", "🛡️", "Compliance Office", "checks violations"),
     ("Mockup", "📦", "Mockup Assembly", "selects products"),
+    ("Apparel", "🧥", "Sweater & Hoodie", "specializes apparel designs"),
     ("Pricing", "💰", "Pricing Bureau", "sets prices"),
     ("Approval", "✅", "Approval Gate", "approves designs"),
     ("Simulator", "📊", "Market Simulator", "calculates results"),
@@ -52,15 +55,16 @@ canvas{width:100%;border:2px solid #00ff41;box-shadow:0 0 12px #00ff41;backgroun
  <button id="reset">↺ RESET</button>
  <span id="metrics"></span>
 </div>
-<canvas id="c" width="960" height="560"></canvas>
+<canvas id="c" width="960" height="660"></canvas>
 <div id="info">Click an agent or a station to inspect it.</div>
 <script>
 const D = __DATA__, P = D.payload, W = 960, H = 560;
 const cv = document.getElementById('c'), ctx = cv.getContext('2d');
-const RW = 210, RH = 150, TOP = 80, GAPX = 30, GAPY = 40, X0 = 20;
+const RW = 210, RH = 150, TOP = 80, GAPX = 20, GAPY = 30, X0 = 10;
 let paused = false, speed = 1, sel = null, S;
 function roomPos(i) {
-  const row = i < 4 ? 0 : 1, col = row === 0 ? i : 7 - i;
+  const row = Math.floor(i / 4), position = i % 4;
+  const col = row % 2 === 0 ? position : 3 - position;
   return {x: X0 + col * (RW + GAPX), y: TOP + row * (RH + GAPY)};
 }
 function door(i) { const p = roomPos(i); return {x: p.x + RW / 2, y: p.y + RH - 22}; }
@@ -72,11 +76,12 @@ function init() {
 function dur(i) { return 1.2 + (i % 3) * 0.4; }
 function finish(a, d) {
   const i = a.i;
+  const name = P.stations[i].agent;
   S.st[i].processed++; a.handled++;
-  if (i === 3 && d.flagged) return reject(a, d);
-  if (i === 6 && !d.approved) return reject(a, d);
-  if (i === 6) S.approved++;
-  if (i === 7) { S.done++; S.profit += d.profit; S.revenue += d.revenue; S.fx.push({x: a.x, y: a.y - 30, t: 0, txt: '+$' + d.profit.toFixed(0)}); return; }
+  if (name === 'Compliance' && d.flagged) return reject(a, d);
+  if (name === 'Approval' && !d.approved) return reject(a, d);
+  if (name === 'Approval') S.approved++;
+  if (name === 'Simulator') { S.done++; S.profit += d.profit; S.revenue += d.revenue; S.fx.push({x: a.x, y: a.y - 30, t: 0, txt: '+$' + d.profit.toFixed(0)}); return; }
   a.pkg = d; a.mode = 'carry'; const n = door(i + 1); a.tx = n.x; a.ty = n.y;
 }
 function reject(a, d) { S.rejected++; S.fx.push({x: a.x, y: a.y - 30, t: 0, txt: '✖ ' + d.id, bad: 1}); }

@@ -10,9 +10,12 @@ def _df():
     ])
 
 
-def test_payload_has_eight_stations_and_designs():
+def test_payload_has_eleven_stations_and_designs():
     p = build_arena_payload(_df())
-    assert len(STATIONS) == 8 and len(p["stations"]) == 8
+    assert len(STATIONS) == 11 and len(p["stations"]) == 11
+    assert {"Research", "Design", "Apparel"} <= {
+        station["agent"] for station in p["stations"]
+    }
     assert p["designs"][1]["flagged"] and p["designs"][1]["profit"] == 0.0
 
 

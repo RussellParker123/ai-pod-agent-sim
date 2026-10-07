@@ -9,11 +9,14 @@ import streamlit.components.v1 as components
 DATA_DIR = Path(__file__).resolve().parents[2] / "data"
 
 AGENTS = [
-    ("🔎", "Trend Agent", "Market research"),
+    ("🎯", "Trend Agent", "Trend discovery"),
+    ("🔎", "Market Research", "Shop tag signals"),
+    ("💡", "Design Agent", "Original concepts"),
     ("✍️", "Prompt Agent", "Original prompts"),
     ("🎨", "Image Agent", "Art generation"),
     ("🛡️", "Compliance Agent", "Trademark & similarity"),
-    ("👕", "Mockup Agent", "Mugs, shirts, totes"),
+    ("📦", "Mockup Agent", "Mugs, shirts, totes"),
+    ("🧥", "Sweater/Hoodie Agent", "Apparel concepts"),
     ("💲", "Pricing Agent", "Margins"),
     ("🧑‍💼", "Manager", "Oversight & greenlight"),
 ]
@@ -52,8 +55,11 @@ def desk(i, active, bubble, count):
 
 
 def office_html(active, bubbles, counts):
-    mgr = desk(6, active, bubbles[6], counts[6])
-    workers = "".join(desk(i, active, bubbles[i], counts[i]) for i in range(6))
+    manager_index = len(AGENTS) - 1
+    mgr = desk(manager_index, active, bubbles[manager_index], counts[manager_index])
+    workers = "".join(
+        desk(i, active, bubbles[i], counts[i]) for i in range(manager_index)
+    )
     return f'{CSS}<div class="office"><div class="mgr-room">{mgr}</div><div class="floor">{workers}</div></div>'
 
 
@@ -80,22 +86,28 @@ bc = mgr.get("batch", {}).get("counts", {})
 status = mgr.get("batch", {}).get("status", "n/a")
 
 bubbles = [
-    f"Manager kept {n_designs} trending designs, dropped {n('trend', 'drop')}.",
+    f"Found {n_designs} designs; manager dropped {n('trend', 'drop')} at trend review.",
+    f"Reviewed {len(payload.get('market_research', {}).get('signals', []))} niche signals.",
+    f"Created {n_designs} distinct original design concepts.",
     f"Wrote {n_designs} original prompts. No logos, no characters!",
     f"Generated {n_designs} images (simulated).",
     f"Re-checked {n('compliance', 'retry')} flagged, rejected {n('compliance', 'reject')}.",
     "Mockups: " + ", ".join(f"{v} {k}" for k, v in prod.items()),
+    f"Prepared {int(prod.get('sweater', 0)) + int(prod.get('hoodie', 0))} sweater/hoodie mockups.",
     f"Priced everything. Repriced {n('pricing', 'reprice')} below margin floor.",
     f"GREENLIGHT {bc.get('GREENLIGHT', 0)} | HOLD {bc.get('HOLD', 0)} | BLOCK {bc.get('BLOCK', 0)}. Batch: {status}",
 ]
-counts = [n_designs, n_designs, n_designs, n_designs, n_designs, n_designs, bc.get("GREENLIGHT", 0)]
+counts = [
+    n_designs, n_designs, n_designs, n_designs, n_designs,
+    n_designs, n_designs, n_designs, n_designs, bc.get("GREENLIGHT", 0),
+]
 
-step = st.slider("Pipeline step (0 = idle)", 0, 7, 0)
+step = st.slider("Pipeline step (0 = idle)", 0, len(AGENTS), 0)
 play = st.button("▶ Play full run")
 slot = st.empty()
 
 if play:
-    for s in range(1, 8):
+    for s in range(1, len(AGENTS) + 1):
         with slot:
             components.html(office_html(s - 1, bubbles, counts), height=620)
         time.sleep(1.4)

@@ -5,13 +5,16 @@ Python multi-agent simulation for original AI-art print-on-demand workflows (mug
 ## What this project does
 - Simulates a pipeline of agents:
   1. Trend Agent
-  2. Prompt Agent
-  3. Image Agent (simulated)
-  4. Compliance Agent
-  5. Mockup Agent
-  6. Pricing Agent
-  7. Listing Agent
-  8. Approval Gate
+  2. Market Research Agent
+  3. Design Agent
+  4. Prompt Agent
+  5. Image Agent (simulated)
+  6. Compliance Agent
+  7. Mockup Agent
+  8. Sweater & Hoodie Agent
+  9. Pricing Agent
+  10. Approval Gate
+  11. Market Simulator
 - Produces synthetic marketplace outcomes (views, clicks, conversion, orders, revenue, profit).
 - Visualizes results in a Streamlit dashboard.
 
@@ -50,6 +53,10 @@ compliance behavior. Etsy API request logs are written to
 `data/etsy_api.log`. Etsy's public API does not expose shop search-query
 analytics or reasons for delisting, so trend terms are derived from active
 listing tags and inactive listings are used only as similarity references.
+Market research reports active-tag signals from the connected shop only; it
+does not represent marketplace-wide search demand or competitor analysis.
+Without Etsy data, those signals are simulated. The apparel specialist routes
+the strongest concepts to sweaters and hoodies and uses estimated product costs.
 
 3. Run dashboard:
 

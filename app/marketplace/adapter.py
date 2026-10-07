@@ -8,7 +8,13 @@ from app.sim.agents import Design
 
 log = logging.getLogger(__name__)
 
-PRODUCT_TITLES = {"mug": "Mug", "tshirt": "T-Shirt", "tote": "Tote Bag"}
+PRODUCT_TITLES = {
+    "mug": "Mug",
+    "tshirt": "T-Shirt",
+    "tote": "Tote Bag",
+    "sweater": "Sweater",
+    "hoodie": "Hoodie",
+}
 
 
 class MarketplaceAdapter(ABC):
