@@ -9,18 +9,9 @@ from dataclasses import dataclass, asdict
 from typing import Callable, List, Dict, Optional
 from collections import Counter
 
-from app.sim.agents import Design
+from app.sim.agents import Design, PRODUCT_FIT
 
 WEIGHTS = {"trend": 0.30, "compliance": 0.30, "margin": 0.20, "fit": 0.10, "diversity": 0.10}
-
-PRODUCT_FIT = {
-    "coffee culture": {"mug": 0.95, "tshirt": 0.6, "tote": 0.6},
-    "bookish humor": {"mug": 0.9, "tote": 0.9, "tshirt": 0.7},
-    "minimalist motivation": {"tshirt": 0.9, "mug": 0.8, "tote": 0.7},
-    "retro outdoors": {"tshirt": 0.95, "mug": 0.7, "tote": 0.7},
-    "pet lovers": {"mug": 0.85, "tshirt": 0.85, "tote": 0.8},
-    "cozy autumn": {"mug": 0.9, "tshirt": 0.7, "tote": 0.7},
-}
 
 COACH_TIPS = {
     "trend": "Weak trend: swap to a hotter niche or add a seasonal angle to the prompt.",

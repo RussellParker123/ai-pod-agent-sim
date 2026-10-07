@@ -4,7 +4,13 @@ from urllib.error import HTTPError
 
 from app.connectors.etsy_connector import EtsyAPIError, EtsyConnector
 from app.sim import agents
-from app.sim.agents import Design, compliance_agent, trend_agent
+from app.sim.agents import (
+    Design,
+    compliance_agent,
+    mockup_agent,
+    production_research_agent,
+    trend_agent,
+)
 
 
 class StubEtsyConnector:
@@ -19,6 +25,25 @@ class StubEtsyConnector:
 
 
 class EtsyIntegrationTests(unittest.TestCase):
+    def test_production_research_translates_niche_into_product(self):
+        design = Design("D001", "coffee culture", 0.9)
+
+        recommendations = production_research_agent([design])
+        mockup_agent([design])
+
+        self.assertEqual(design.product_type, "mug")
+        self.assertEqual(recommendations[0]["product_type"], "mug")
+        self.assertEqual(recommendations[0]["trend_score"], 0.9)
+        self.assertGreater(design.unit_cost, 0)
+
+    def test_production_research_uses_safe_default_for_unknown_niche(self):
+        design = Design("D001", "unclassified niche", 0.8)
+
+        recommendation = production_research_agent([design])[0]
+
+        self.assertEqual(recommendation["product_type"], "mug")
+        self.assertIn("default", recommendation["rationale"])
+
     def test_trend_agent_uses_store_terms(self):
         designs = trend_agent(
             ["mock niche"],

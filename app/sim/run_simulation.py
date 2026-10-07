@@ -7,6 +7,7 @@ from app.connectors.etsy_connector import (
 )
 from app.sim.agents import (
     trend_agent,
+    production_research_agent,
     prompt_agent,
     image_agent,
     compliance_agent,
@@ -46,6 +47,7 @@ def run_once(etsy_mode: bool = False, real: bool = False, draft_only: bool = Fal
 
     designs = trend_agent(niches=niches, k=24, etsy_connector=etsy_connector)
     designs = manager.review_trends(designs)
+    production_research = production_research_agent(designs)
 
     prompt_agent(designs)
     image_agent(designs)
@@ -63,6 +65,7 @@ def run_once(etsy_mode: bool = False, real: bool = False, draft_only: bool = Fal
     results = listing_simulator(designs)
     payload = to_serializable(designs, results)
     payload["manager"] = manager.report(designs, results)
+    payload["production_research"] = production_research
 
     if real or draft_only:
         from app.marketplace.adapter import get_adapter

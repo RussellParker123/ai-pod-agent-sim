@@ -7,6 +7,15 @@ import re
 
 LOGGER = logging.getLogger(__name__)
 
+PRODUCT_FIT = {
+    "coffee culture": {"mug": 0.95, "tshirt": 0.6, "tote": 0.6},
+    "bookish humor": {"mug": 0.9, "tote": 0.9, "tshirt": 0.7},
+    "minimalist motivation": {"tshirt": 0.9, "mug": 0.8, "tote": 0.7},
+    "retro outdoors": {"tshirt": 0.95, "mug": 0.7, "tote": 0.7},
+    "pet lovers": {"mug": 0.85, "tshirt": 0.85, "tote": 0.8},
+    "cozy autumn": {"mug": 0.9, "tshirt": 0.7, "tote": 0.7},
+}
+
 
 @dataclass
 class Design:
@@ -85,6 +94,31 @@ def trend_agent(niches: List[str], k: int = 12, etsy_connector=None) -> List[Des
     return picks
 
 
+def production_research_agent(designs: List[Design]) -> List[Dict]:
+    """Translate researched niches into product recommendations for production."""
+    recommendations = []
+    for design in designs:
+        product_scores = PRODUCT_FIT.get(design.niche, {})
+        if product_scores:
+            product_type = max(product_scores, key=product_scores.get)
+            rationale = "highest niche-product fit"
+        else:
+            product_type = "mug"
+            rationale = "default product for an unclassified niche"
+
+        design.product_type = product_type
+        recommendations.append(
+            {
+                "design_id": design.design_id,
+                "niche": design.niche,
+                "trend_score": design.trend_score,
+                "product_type": product_type,
+                "rationale": rationale,
+            }
+        )
+    return recommendations
+
+
 def prompt_agent(designs: List[Design]) -> None:
     for d in designs:
         d.prompt = (
@@ -155,7 +189,8 @@ def compliance_agent(designs: List[Design], etsy_connector=None) -> None:
 
 def mockup_agent(designs: List[Design], product_types=("mug", "tshirt", "tote")) -> None:
     for d in designs:
-        d.product_type = random.choice(product_types)
+        if d.product_type not in product_types:
+            d.product_type = random.choice(product_types)
         base_costs = {"mug": 6.5, "tshirt": 9.0, "tote": 7.0}
         d.unit_cost = base_costs[d.product_type]
 

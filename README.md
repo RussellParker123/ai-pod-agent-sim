@@ -13,6 +13,9 @@ Python multi-agent simulation for original AI-art print-on-demand workflows (mug
   7. Listing Agent
   8. Approval Gate
 - Produces synthetic marketplace outcomes (views, clicks, conversion, orders, revenue, profit).
+- Researches available Etsy listing-tag trends and maps qualified niches to a
+  recommended product type using niche/product-fit rules. Recommendations are
+  simulated production planning, not demand forecasts or manufacturing orders.
 - Visualizes results in a Streamlit dashboard.
 
 ## What this project does NOT do
