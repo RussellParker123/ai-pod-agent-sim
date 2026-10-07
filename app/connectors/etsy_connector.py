@@ -235,7 +235,7 @@ class EtsyConnector:
             for receipt in receipts:
                 if not receipt.get("is_paid") or receipt.get("is_cancelled"):
                     continue
-                amount = receipt.get("grandtotal") or {}
+                amount = receipt.get("subtotal") or receipt.get("grandtotal") or {}
                 if amount.get("currency_code") != "USD":
                     continue
                 divisor = amount.get("divisor") or 1

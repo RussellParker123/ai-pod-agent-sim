@@ -145,6 +145,9 @@ if __name__ == "__main__":
         if input(f"Create real {kind} Etsy listings for approved designs? [y/N] ").strip().lower() != "y":
             print("Not confirmed; running in simulation mode.")
             real = False
+    if args.revenue_goal is not None and not real:
+        print("Revenue goal run cancelled.")
+        raise SystemExit(0)
     if args.revenue_goal is not None and real:
         p = run_until_revenue_goal(
             args.revenue_goal,

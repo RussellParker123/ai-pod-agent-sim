@@ -23,8 +23,13 @@ No banking info is needed in this project; Etsy handles payments.
 python -m app.sim.run_simulation                       # simulation only
 python -m app.sim.run_simulation --real --draft-only   # real drafts
 python -m app.sim.run_simulation --real                # real active listings
+python -m app.sim.run_simulation --real --revenue-goal 1000000000  # repeat until paid USD sales reach $1B
 ```
 If an API call fails, that design falls back to a simulated listing.
+The revenue-goal mode requires `transactions_r`, publishes a new active batch
+only after confirmation, and checks paid, non-cancelled USD receipt subtotals.
+It waits 24 hours between batches by default; use `--cycle-delay-seconds` to
+change the interval. Stop it with Ctrl+C.
 
 ## Security
 - Never commit `.env` (it is in `.gitignore`); never paste keys into code, issues or logs.

@@ -51,6 +51,19 @@ compliance behavior. Etsy API request logs are written to
 analytics or reasons for delisting, so trend terms are derived from active
 listing tags and inactive listings are used only as similarity references.
 
+To keep running approved active-listing batches until paid Etsy sales reach
+$1 billion, run:
+
+```bash
+python -m app.sim.run_simulation --real --revenue-goal 1000000000
+```
+
+This requires Etsy OAuth `transactions_r` scope and asks for confirmation
+before publishing. Progress is based on cumulative paid, non-cancelled USD
+receipt subtotals; non-USD orders are excluded. The process checks sales after
+each batch and waits 24 hours before publishing another batch when the goal is
+not met. Use `--cycle-delay-seconds` to change that interval.
+
 3. Run dashboard:
 
 ```bash

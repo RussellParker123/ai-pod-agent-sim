@@ -85,6 +85,78 @@ class EtsyIntegrationTests(unittest.TestCase):
             ],
         )
 
+    def test_total_sales_counts_only_paid_non_cancelled_usd_subtotals(self):
+        connector = EtsyConnector("123", "key", "secret", access_token="token")
+        connector._get = lambda path, query: {
+            "results": [
+                {
+                    "is_paid": True,
+                    "is_cancelled": False,
+                    "subtotal": {
+                        "amount": 1500,
+                        "divisor": 100,
+                        "currency_code": "USD",
+                    },
+                },
+                {
+                    "is_paid": True,
+                    "is_cancelled": True,
+                    "subtotal": {
+                        "amount": 500,
+                        "divisor": 100,
+                        "currency_code": "USD",
+                    },
+                },
+                {
+                    "is_paid": False,
+                    "is_cancelled": False,
+                    "subtotal": {
+                        "amount": 700,
+                        "divisor": 100,
+                        "currency_code": "USD",
+                    },
+                },
+                {
+                    "is_paid": True,
+                    "is_cancelled": False,
+                    "subtotal": {
+                        "amount": 900,
+                        "divisor": 100,
+                        "currency_code": "CAD",
+                    },
+                },
+            ]
+        }
+
+        self.assertEqual(connector.get_total_sales_usd(), 15.0)
+
+    def test_total_sales_paginates_receipts(self):
+        connector = EtsyConnector("123", "key", "secret", access_token="token")
+        requests = []
+
+        def get(path, query):
+            requests.append(query)
+            amount = 1 if query["offset"] == 0 else 50
+            count = 100 if query["offset"] == 0 else 1
+            return {
+                "results": [
+                    {
+                        "is_paid": True,
+                        "is_cancelled": False,
+                        "subtotal": {
+                            "amount": amount,
+                            "divisor": 100,
+                            "currency_code": "USD",
+                        },
+                    }
+                ] * count
+            }
+
+        connector._get = get
+
+        self.assertEqual(connector.get_total_sales_usd(), 1.5)
+        self.assertEqual([request["offset"] for request in requests], [0, 100])
+
     def test_rate_limit_is_reported_as_connector_error(self):
         connector = EtsyConnector("123", "key", "secret", access_token="token")
         error = HTTPError("https://example.test", 429, "rate limited", {}, None)
