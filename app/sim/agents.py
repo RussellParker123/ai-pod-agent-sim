@@ -1,4 +1,4 @@
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass, asdict, field
 from typing import List, Dict
 import logging
 import random
@@ -14,6 +14,7 @@ class Design:
     niche: str
     trend_score: float
     prompt: str = ""
+    style_keywords: List[str] = field(default_factory=list)
     image_uri: str = ""
     compliance_status: str = "pending"
     compliance_notes: str = ""
@@ -87,8 +88,9 @@ def trend_agent(niches: List[str], k: int = 12, etsy_connector=None) -> List[Des
 
 def prompt_agent(designs: List[Design]) -> None:
     for d in designs:
+        style = ", ".join(d.style_keywords) if d.style_keywords else "minimal"
         d.prompt = (
-            f"Original {d.niche} themed vector-style artwork, minimal, high contrast, "
+            f"Original {d.niche} themed vector-style artwork, {style}, high contrast, "
             f"commercial-friendly, no logos, no characters, no trademark terms"
         )
 
@@ -153,9 +155,14 @@ def compliance_agent(designs: List[Design], etsy_connector=None) -> None:
             d.compliance_notes = "no major issues detected"
 
 
-def mockup_agent(designs: List[Design], product_types=("mug", "tshirt", "tote")) -> None:
+def mockup_agent(
+    designs: List[Design],
+    product_types=("mug", "tshirt", "tote"),
+    preferred_product_types=None,
+) -> None:
     for d in designs:
-        d.product_type = random.choice(product_types)
+        pool = [p for p in (preferred_product_types or []) if p in product_types]
+        d.product_type = random.choice(pool or product_types)
         base_costs = {"mug": 6.5, "tshirt": 9.0, "tote": 7.0}
         d.unit_cost = base_costs[d.product_type]
 

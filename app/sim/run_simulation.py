@@ -15,6 +15,7 @@ from app.sim.agents import (
     listing_simulator,
     to_serializable,
 )
+from app.sim.research import research_agent, apply_research
 from app.sim.manager import ManagerAgent
 from app.sim.utils import DATA_DIR, save_json, timestamp
 
@@ -44,7 +45,9 @@ def run_once(etsy_mode: bool = False, real: bool = False, draft_only: bool = Fal
     ]
     manager = ManagerAgent()
 
+    research = research_agent(niches, etsy_connector=etsy_connector)
     designs = trend_agent(niches=niches, k=24, etsy_connector=etsy_connector)
+    apply_research(designs, research)  # research -> trend/prompt departments
     designs = manager.review_trends(designs)
 
     prompt_agent(designs)
@@ -55,13 +58,16 @@ def run_once(etsy_mode: bool = False, real: bool = False, draft_only: bool = Fal
     compliance_check(designs)
     manager.review_compliance(designs, recheck=compliance_check)
 
-    mockup_agent(designs)
+    mockup_agent(
+        designs, preferred_product_types=research["top_product_types"]
+    )
     pricing_agent(designs, target_margin=0.42)
     manager.review_pricing(designs)
     manager.score_and_decide(designs)  # GREENLIGHT / HOLD / BLOCK + batch status
 
     results = listing_simulator(designs)
     payload = to_serializable(designs, results)
+    payload["research"] = research
     payload["manager"] = manager.report(designs, results)
 
     if real or draft_only:
