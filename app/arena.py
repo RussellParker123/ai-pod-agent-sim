@@ -58,7 +58,7 @@ canvas{width:100%;border:2px solid #00ff41;box-shadow:0 0 12px #00ff41;backgroun
 <canvas id="c" width="960" height="660"></canvas>
 <div id="info">Click an agent or a station to inspect it.</div>
 <script>
-const D = __DATA__, P = D.payload, W = 960, H = 560;
+const D = __DATA__, P = D.payload, W = 960, H = 660;
 const cv = document.getElementById('c'), ctx = cv.getContext('2d');
 const RW = 210, RH = 150, TOP = 80, GAPX = 20, GAPY = 30, X0 = 10;
 let paused = false, speed = 1, sel = null, S;
@@ -137,7 +137,7 @@ function draw() {
     ctx.fillStyle = '#00ccff'; ctx.fillText('queue ' + s.q.length + ' | done ' + s.processed, p.x + 8, p.y + 54);
     if (busy) { ctx.fillStyle = '#123'; ctx.fillRect(p.x + 8, p.y + 62, RW - 16, 8); ctx.fillStyle = '#00ff41'; ctx.fillRect(p.x + 8, p.y + 62, (RW - 16) * s.prog, 8); }
     for (let k = 0; k < Math.min(s.q.length, 6); k++) { ctx.fillStyle = '#ffaa00'; ctx.fillRect(p.x + 8 + k * 12, p.y + 78, 9, 9); }
-    if (i < 7) { const a = door(i), b = door(i + 1); ctx.strokeStyle = 'rgba(0,204,255,.25)'; ctx.setLineDash([4, 6]); ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke(); ctx.setLineDash([]); }
+    if (i < P.stations.length - 1) { const a = door(i), b = door(i + 1); ctx.strokeStyle = 'rgba(0,204,255,.25)'; ctx.setLineDash([4, 6]); ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke(); ctx.setLineDash([]); }
   });
   S.ag.forEach(a => {
     const hot = sel && sel.k === 'a' && sel.i === a.i;

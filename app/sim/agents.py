@@ -235,6 +235,8 @@ def sweater_hoodie_agent(designs: List[Design], share: float = 0.25) -> None:
         return
     if not 0 <= share <= 1:
         raise ValueError("share must be between 0 and 1")
+    if share == 0:
+        return
 
     apparel_designs = sorted(
         designs, key=lambda design: design.trend_score, reverse=True
