@@ -36,6 +36,21 @@ pip install -r requirements.txt
 python -m app.sim.run_simulation
 ```
 
+To optionally use read-only Etsy shop data, copy `.env.example` to `.env` and
+provide `ETSY_SHOP_ID`, `ETSY_API_KEY`, `ETSY_API_SECRET`, and an Etsy OAuth
+access token or refresh token with the `shops_r` scope. Etsy OAuth tokens must
+be obtained through Etsy's OAuth authorization flow. Then run:
+
+```bash
+python -m app.sim.run_simulation --etsy-mode
+```
+
+Without valid Etsy credentials, the simulation uses its mock trend and
+compliance behavior. Etsy API request logs are written to
+`data/etsy_api.log`. Etsy's public API does not expose shop search-query
+analytics or reasons for delisting, so trend terms are derived from active
+listing tags and inactive listings are used only as similarity references.
+
 3. Run dashboard:
 
 ```bash
