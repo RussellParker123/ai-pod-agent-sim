@@ -144,3 +144,129 @@ def test_untrusted_text_is_escaped_in_html():
     assert script.count("</script>") == 1
     assert "<img" not in script and "<svg" not in script and "\\u003c/script\\u003e" in script
     assert "function esc(" in html and "esc(cy.line)" in html
+
+
+from app.arena import design_route, recycling_plans, stage_assignments  # noqa: E402
+from app.sim.characters import character_from_report  # noqa: E402
+
+
+def _config(html):
+    import json
+
+    return json.loads(html.split("const CFG = ", 1)[1].split(";\n", 1)[0])
+
+
+def test_design_routes_cover_every_outcome():
+    assert design_route(False, True, False) == (
+        ["trend", "prompt", "image", "compliance", "mockup", "pricing", "approval", "simulator"], "completed")
+    assert design_route(True, False, False) == (["trend", "prompt", "image", "compliance"], "rejected")
+    assert design_route(True, False, True, recycle_outcome="quarantined")[0][-1] == "recycling"
+    assert design_route(False, False, False, "HOLD")[1] == "held"
+    assert design_route(False, False, False, "BLOCK")[1] == "blocked"
+    assert design_route(False, False, False)[1] == "held"  # older runs: no recorded decision
+    path, res = design_route(False, False, True, "BLOCK", "pending_reuse")
+    assert path[-2:] == ["approval", "recycling"] and res == "pending_reuse"
+
+
+def test_reject_all_run_expects_no_work_downstream():
+    rows = [{"id": f"D{i}", "niche": "n", "flagged": True, "approved": False, "profit": 0.0} for i in range(3)]
+    cfg = _config(build_arena_html(rows))
+    assert cfg["expected"] == {"trend": 3, "prompt": 3, "image": 3, "compliance": 3}
+    assert all(d["resolution"] == "rejected" for d in cfg["designs"])
+    assert _config(build_arena_html([]))["expected"] == {}
+
+
+def test_stage_assignments_follow_recorded_round_robin():
+    ids = ["D1", "D2", "D3", "D4-R1-abcd"]
+    team = {"assignments": [
+        {"department": "prompt", "worker_id": "prompt-1", "design_count": 2},
+        {"department": "prompt", "worker_id": "prompt-2", "design_count": 1},
+        {"department": "compliance", "worker_id": "compliance-1", "design_count": 2},
+        {"department": "compliance", "worker_id": "compliance-2", "design_count": 2},
+        {"department": "image", "worker_id": "image-1", "design_count": 9},  # inconsistent: not guessed
+    ]}
+    out = stage_assignments(ids, {"D4-R1-abcd"}, team)
+    assert out["D1"]["prompt"] == "prompt-1" and out["D2"]["prompt"] == "prompt-2" and out["D3"]["prompt"] == "prompt-1"
+    assert "prompt" not in out["D4-R1-abcd"]  # recycled candidates skip prompt/image
+    assert [out[i]["compliance"] for i in ids] == ["compliance-1", "compliance-2", "compliance-1", "compliance-2"]
+    assert all("image" not in v for v in out.values())
+    assert stage_assignments(ids, set(), None) == {}
+
+
+def test_payload_uses_recorded_team_and_manager_decisions():
+    df = pd.DataFrame([
+        {"design_id": "a", "niche": "n", "compliance_status": "pass", "approved": False, "profit": 0.0},
+        {"design_id": "b", "niche": "n", "compliance_status": "pass", "approved": False, "profit": 0.0},
+    ])
+    team = {"assignments": [{"department": "mockup", "worker_id": "mockup-2", "design_count": 2}]}
+    manager = {"design_scores": {"a": {"manager_decision": "BLOCK"}, "b": {"manager_decision": "HOLD"}}}
+    rows = {r["id"]: r for r in design_payload(df, team=team, manager=manager)}
+    assert rows["a"]["resolution"] == "blocked" and rows["b"]["resolution"] == "held"
+    assert rows["a"]["assigned"] == {"mockup": "mockup-2"}
+
+
+def _store_record(record_id, run, reason="low fit", analysis=True):
+    rec = {"record_id": record_id, "source_ref": run, "source_design_id": "D1", "status": "pending_review",
+           "image_uri": "sim://images/D1.png", "rejection": {"by": "manager", "reason": reason, "stage": "approval"},
+           "original": {"niche": "cozy autumn", "product_type": "tote"}, "analysis": None}
+    if analysis:
+        rec["analysis"] = {"recycler_id": "recycler-1", "method": "metadata_cross_reference", "image_inspected": False,
+                           "quarantine": False, "limitations": "metadata only",
+                           "suggestions": [{"suggestion_id": "S-1", "type": "alternate_product",
+                                            "target_niche": "cozy autumn", "target_product": "mug",
+                                            "confidence": 0.71, "reasons": ["fit 0.9"], "references": ["product_fit:x"]}]}
+    return rec
+
+
+def test_recycling_plans_only_attribute_this_runs_records():
+    run = "run_1.json"
+    payload = {"records": [{"record_id": "RC-a", "source_design_id": "D1", "status": "pending_review"},
+                           {"record_id": "RC-b", "source_design_id": "D2", "status": "pending_analysis"},
+                           {"record_id": "RC-a", "source_design_id": "D1", "status": "pending_review"}]}
+    store = [_store_record("RC-a", run), _store_record("RC-b", run, analysis=False),
+             _store_record("RC-x", "run_other.json")]
+    out = recycling_plans(payload, store, run)
+    assert set(out["plans"]) == {"RC-a", "RC-b"} and out["other_queue_records"] == 1
+    a = out["plans"]["RC-a"]
+    assert a["analysis"]["suggestions"][0]["target_product"] == "mug"
+    assert a["analysis"]["image_inspected"] is False and a["analysis_source"] == "recycling queue (current)"
+    assert "no image pixels" in a["pixels"] and a["reason"] == "low fit"
+    assert out["plans"]["RC-b"]["analysis"] is None  # shown as "not analyzed yet", never invented
+    # Older payload + no queue file: falls back to the run snapshot or None.
+    snap = {"records": [{"record_id": "RC-s", "source_design_id": "D9", "status": "pending_review",
+                         "analysis": {"recycler_id": "recycler-1", "suggestions": []}}]}
+    plan = recycling_plans(snap, [], run)["plans"]["RC-s"]
+    assert plan["analysis_source"] == "run snapshot" and plan["current_status"] is None
+    assert recycling_plans(None, None, run) == {"plans": {}, "other_queue_records": 0}
+
+
+def test_recycler_plan_text_is_escaped_in_html():
+    evil = "</script><img src=x onerror=alert(1)>"
+    plans = recycling_plans({"records": [{"record_id": "RC-a", "source_design_id": "D1", "status": "x"}]},
+                            [_store_record("RC-a", "r", reason=evil)], "r")
+    rows = [{"id": "D1", "niche": "n", "flagged": False, "approved": False, "profit": 0.0, "recycle_record": "RC-a",
+             "recycle_status": "pending_review"}]
+    html = build_arena_html(rows, plans=plans)
+    script = html.split("<script>", 1)[1]
+    assert script.count("</script>") == 1 and "<img" not in script
+    assert _config(html)["plans"]["RC-a"]["reason"] == evil
+    assert "esc(p.reason)" in html
+
+
+def test_cypher_basis_and_reconstructed_visits():
+    old = character_from_report({"decisions": [{"stage": "trend", "action": "keep"},
+                                               {"stage": "approval", "action": "hold"}]})
+    cfg = _config(build_arena_html([], character=old.to_dict()))
+    assert cfg["cypher"]["basis"] == "reconstructed"
+    assert {v["source"] for v in cfg["cypher"]["visits"]} == {"reconstructed"}
+    assert _config(build_arena_html([], character=character_from_report(None).to_dict()))["cypher"]["basis"] == "none"
+    recorded = {"display_name": "Dr. Cypher", "visits": [{"department": "trend", "purpose": "p", "line": "l"}]}
+    assert _config(build_arena_html([], character=recorded))["cypher"]["basis"] == "recorded"
+
+
+def test_unstaffed_rooms_get_labelled_placeholders():
+    team = {"departments": {"prompt": ["p-1"], "compliance": ["c-1"]}}
+    agents = {a["id"]: a for a in arena_agents(team)}
+    for room in ("image", "mockup", "pricing"):
+        assert agents[f"{room}-placeholder"]["synthetic"] is True and agents[f"{room}-placeholder"]["room"] == room
+    assert agents["p-1"]["synthetic"] is False and "prompt-placeholder" not in agents

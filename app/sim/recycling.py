@@ -528,6 +528,35 @@ def enqueue_human_rejections(
     return out
 
 
+def analysis_summary(analysis: Optional[Dict], max_suggestions: int = 3) -> Optional[Dict]:
+    """Compact, JSON-safe copy of a recycler analysis for run payloads and the
+    arena. Returns None when the record has not been analysed yet."""
+    if not isinstance(analysis, dict):
+        return None
+    suggestions = []
+    for s in (analysis.get("suggestions") or [])[:max_suggestions]:
+        if not isinstance(s, dict):
+            continue
+        suggestions.append({
+            "suggestion_id": str(s.get("suggestion_id") or ""),
+            "type": str(s.get("type") or ""),
+            "target_niche": s.get("target_niche"),
+            "target_product": s.get("target_product"),
+            "confidence": s.get("confidence"),
+            "reasons": [str(x) for x in (s.get("reasons") or [])][:3],
+            "references": [str(x) for x in (s.get("references") or [])][:4],
+        })
+    return {
+        "recycler_id": analysis.get("recycler_id"),
+        "method": analysis.get("method"),
+        "image_inspected": bool(analysis.get("image_inspected")),
+        "quarantine": bool(analysis.get("quarantine")),
+        "analyzed_at": analysis.get("analyzed_at"),
+        "suggestions": suggestions,
+        "limitations": analysis.get("limitations") or METADATA_LIMITATIONS,
+    }
+
+
 OUTCOME_GROUPS = {
     "pending_reuse": (PENDING_ANALYSIS, PENDING_REVIEW, REUSE_REQUESTED, REENTERED),
     "quarantined": (QUARANTINED,),
