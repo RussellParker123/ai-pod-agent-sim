@@ -4,8 +4,10 @@ The brief feeds the trend agent (boosts best-selling niches), the prompt agent
 (style keywords for new images) and the mockup agent (preferred products).
 """
 from collections import Counter
+from statistics import median
 from typing import Dict, List, Optional
 import logging
+import math
 import random
 import re
 
@@ -97,3 +99,45 @@ def apply_research(designs: List[Design], research: Dict) -> None:
         if weight:
             d.trend_score = round(min(1.0, d.trend_score + 0.1 + 0.2 * weight), 3)
         d.style_keywords = styles or ["minimal"]
+
+
+def pricing_research_agent(etsy_connector=None) -> Dict:
+    """Summarize USD prices on this shop's active listings by product type."""
+    source = "unavailable"
+    inventory = []
+    if etsy_connector:
+        try:
+            inventory = etsy_connector.get_inventory()
+            source = "etsy_shop_inventory"
+        except Exception as exc:
+            LOGGER.warning("Etsy pricing research unavailable: %s", exc)
+
+    prices: Dict[str, List[float]] = {}
+    for item in inventory:
+        currency = str(item.get("currency_code") or "").upper()
+        price = item.get("price")
+        if currency != "USD" or not isinstance(price, (int, float)) or isinstance(price, bool):
+            continue
+        if not math.isfinite(price) or price <= 0:
+            continue
+
+        text = " ".join(
+            [str(item.get("title", ""))]
+            + [str(tag) for tag in item.get("tags", [])]
+        ).lower()
+        for word, product in PRODUCT_WORDS.items():
+            if word in text:
+                prices.setdefault(product, []).append(float(price))
+                break
+
+    return {
+        "source": source if prices else "unavailable",
+        "currency": "USD",
+        "benchmarks": {
+            product: {
+                "median_price": round(median(values), 2),
+                "listing_count": len(values),
+            }
+            for product, values in prices.items()
+        },
+    }

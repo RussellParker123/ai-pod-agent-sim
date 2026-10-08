@@ -1,6 +1,7 @@
 from dataclasses import dataclass, asdict, field
 from typing import List, Dict
 import logging
+import math
 import random
 import re
 
@@ -167,10 +168,26 @@ def mockup_agent(
         d.unit_cost = base_costs[d.product_type]
 
 
-def pricing_agent(designs: List[Design], target_margin: float = 0.4) -> None:
+def pricing_agent(
+    designs: List[Design],
+    target_margin: float = 0.4,
+    market_prices=None,
+) -> None:
+    if not 0 <= target_margin < 1:
+        raise ValueError("target_margin must be between 0 and 1")
+
+    market_prices = market_prices or {}
     for d in designs:
-        # price = cost / (1 - margin)
-        d.price = round(d.unit_cost / (1 - target_margin), 2)
+        # Round up so cent precision cannot push the margin below the target.
+        cost_floor = math.ceil(
+            (d.unit_cost / (1 - target_margin) - 1e-9) * 100
+        ) / 100
+        benchmark = market_prices.get(d.product_type)
+        if not isinstance(benchmark, (int, float)) or isinstance(benchmark, bool):
+            benchmark = 0
+        if not math.isfinite(benchmark) or benchmark < 0:
+            benchmark = 0
+        d.price = round(max(cost_floor, benchmark), 2)
 
 
 def approval_gate(designs: List[Design], auto_approve_safe: bool = True) -> None:
