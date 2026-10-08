@@ -327,3 +327,19 @@ def test_set_sync_product_preview_updates_every_sync_variant(monkeypatch):
     put.assert_called_once_with("/store/variants/9", {"files": [
         {"type": "default", "url": "https://a/art.png"}, {"type": "preview", "url": "https://a/mock.jpg"},
     ]})
+
+
+def test_reorder_failure_keeps_uploaded_mockup(tmp_path, monkeypatch):
+    monkeypatch.setattr(pipeline, "DATA_DIR", tmp_path)
+    etsy = Mock()
+    etsy.reorder_listing_image.side_effect = RuntimeError("etsy hiccup")
+    printful = Mock()
+    printful.is_configured.return_value = True
+    printful.generate_mockup.return_value = "https://example.test/mockup.jpg"
+    monkeypatch.setattr(pipeline, "etsy_client", etsy)
+    monkeypatch.setattr(pipeline, "printful_client", printful)
+    monkeypatch.setattr(pipeline.requests, "get", Mock(return_value=Mock(content=b"mockup")))
+    url, path = pipeline._attach_mockup("D1", "tote", 1, 5, "https://example.test/artwork.png", 6)
+    assert url == "https://example.test/mockup.jpg"
+    assert path == str(tmp_path / "images" / "D1_mockup.jpg")
+    etsy.upload_listing_image.assert_called_once()

@@ -521,10 +521,13 @@ def _attach_mockup(design_id, product_type, shop_id, listing_id, etsy_image_url,
         mockup_path.parent.mkdir(parents=True, exist_ok=True)
         mockup_path.write_bytes(resp.content)
         etsy_client.upload_listing_image(shop_id, listing_id, str(mockup_path))
-        if flat_design_image_id:
-            etsy_client.reorder_listing_image(shop_id, listing_id, flat_design_image_id, rank=2)
     except Exception:
         return None, None
+    if flat_design_image_id:
+        try:
+            etsy_client.reorder_listing_image(shop_id, listing_id, flat_design_image_id, rank=2)
+        except Exception:
+            pass  # the mockup is already on the listing; don't re-upload it on a later refresh
     return mockup_url, str(mockup_path)
 
 
