@@ -49,7 +49,9 @@ class ManagerAgent:
         greenlight_at: float = 0.70,
         hold_at: float = 0.50,
         llm_review: Optional[Callable[[str, Dict], str]] = None,
+        manager_id: str = "manager-1",
     ):
+        self.manager_id = manager_id
         self.min_trend = min_trend
         self.max_per_niche = max_per_niche
         self.max_flag_rate = max_flag_rate
@@ -148,6 +150,7 @@ class ManagerAgent:
 
     def report(self, designs: List[Design], results) -> Dict:
         return {
+            "manager_id": self.manager_id,
             "decision_counts": dict(Counter(x.action for x in self.decisions)),
             "approved": sum(1 for d in designs if d.approved),
             "total_revenue": round(sum(r.revenue for r in results), 2),
