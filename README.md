@@ -373,7 +373,14 @@ python -m app.live.pipeline run-batch --k 6   # creates Etsy DRAFT listings + Pr
 python -m app.live.pipeline list              # see what's pending approval
 python -m app.live.pipeline approve <design_id>   # publishes that Etsy listing live
 python -m app.live.pipeline reject <design_id> --reason "why"   # image goes to the Recycling Facility
+python -m app.live.pipeline refresh-mockups [design_id]   # add product photos to listings showing only flat art
 ```
+
+Each listing's primary photo is a Printful product mockup (the art on the actual
+mug/t-shirt/tote), with the flat artwork kept as photo #2. If mockup generation
+fails, staging still succeeds with the flat artwork only; run `refresh-mockups`
+later (e.g. for totes/t-shirts staged before apparel mockups were reliable) to
+backfill the mockup on Etsy and as the Printful product preview.
 
 Live batches keep the spend safeguards: the Manager greenlights *concepts* before
 any image is generated, so rejected concepts cost nothing and are not recycled. Each

@@ -295,6 +295,10 @@ def upload_listing_image(shop_id: int, listing_id: int, image_path: str, rank: i
         )
 
 
+def get_listing_images(listing_id: int) -> List[dict]:
+    return _get(f"/listings/{listing_id}/images").get("results", [])
+
+
 def reorder_listing_image(shop_id: int, listing_id: int, listing_image_id: int, rank: int) -> dict:
     """Moves an already-uploaded listing image to a new gallery position.
     Unlike upload_listing_image, this doesn't attach a new file -- Etsy's
