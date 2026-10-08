@@ -384,7 +384,9 @@ def run_live_batch_stream(
         entry = _stage_design(design, shop)
         score = manager.design_scores.get(design.design_id, {}).get("score", 0.0)
         if manager_auto_publish and score >= auto_publish_threshold:
-            etsy_client.publish_listing(entry["etsy_shop_id"], entry["etsy_listing_id"])
+            etsy_client.publish_listing(
+                entry["etsy_shop_id"], entry["etsy_listing_id"], return_policy_id=shop["return_policy_id"]
+            )
             entry["status"] = "live"
             entry["published_by"] = "manager"
             auto_published += 1
@@ -548,7 +550,10 @@ def approve_and_publish(design_id: str) -> dict:
     pending = _load_pending()
     for entry in pending:
         if entry["design_id"] == design_id and entry["status"] == "pending_approval":
-            etsy_client.publish_listing(entry["etsy_shop_id"], entry["etsy_listing_id"])
+            shop = _get_shop_context()
+            etsy_client.publish_listing(
+                entry["etsy_shop_id"], entry["etsy_listing_id"], return_policy_id=shop["return_policy_id"]
+            )
             entry["status"] = "live"
             entry["published_by"] = "human"
             _save_pending(pending)

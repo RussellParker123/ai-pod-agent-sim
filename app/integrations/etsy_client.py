@@ -199,10 +199,18 @@ def reorder_listing_image(shop_id: int, listing_id: int, listing_image_id: int, 
     )
 
 
-def publish_listing(shop_id: int, listing_id: int) -> dict:
+def publish_listing(shop_id: int, listing_id: int, return_policy_id: Optional[int] = None) -> dict:
     """Flips a draft listing to 'active' (publicly visible). This is the
-    action that must only ever follow explicit human approval."""
-    return _patch(f"/shops/{shop_id}/listings/{listing_id}", json_body={"state": "active"})
+    action that must only ever follow explicit human approval.
+
+    return_policy_id is required by Etsy to activate any physical listing.
+    Pass it to backfill it on listings staged before this field existed in
+    the draft-creation call (older pending entries) -- harmless to include
+    even when the draft already has one."""
+    body = {"state": "active"}
+    if return_policy_id is not None:
+        body["return_policy_id"] = return_policy_id
+    return _patch(f"/shops/{shop_id}/listings/{listing_id}", json_body=body)
 
 
 def get_shop_receipts(shop_id: int, was_paid: bool = True, limit: int = 25) -> List[dict]:
