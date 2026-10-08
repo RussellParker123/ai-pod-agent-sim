@@ -19,7 +19,7 @@ from typing import Dict, List
 
 from app.integrations import etsy_client, openai_image, openai_text, printful_client
 from app.integrations.config import DATA_DIR
-from app.live.catalog_map import PRODUCT_PRINTFUL_VARIANT, PRODUCT_TAXONOMY
+from app.live.catalog_map import PRODUCT_PRINTFUL_VARIANT, PRODUCT_SHIP_DIMENSIONS, PRODUCT_TAXONOMY
 from app.live.gpt_agents import prompt_agent_live, trend_agent_live
 from app.sim.agents import Design, compliance_agent, mockup_agent, pricing_agent
 from app.sim.manager import ManagerAgent
@@ -167,7 +167,17 @@ def _get_shop_context() -> Dict:
             "Your Etsy shop has no shipping profiles yet. Create one in the Etsy "
             "seller dashboard before running the live pipeline."
         )
-    return {"shop_id": shop_id, "shipping_profile_id": profiles[0]["shipping_profile_id"]}
+    # Etsy's processing-profiles system (rolled out 2026) requires every
+    # physical listing to carry a readiness_state_id alongside
+    # shipping_profile_id. Every item here is print-on-demand, so
+    # "made_to_order" is always the right state; reuse one if the shop
+    # already has it (e.g. set up manually), otherwise create it once.
+    readiness_state_id = etsy_client.get_or_create_readiness_state_id(shop_id, "made_to_order")
+    return {
+        "shop_id": shop_id,
+        "shipping_profile_id": profiles[0]["shipping_profile_id"],
+        "readiness_state_id": readiness_state_id,
+    }
 
 
 STYLE_MODIFIERS = [
@@ -407,6 +417,7 @@ def _stage_design(design, shop: Dict) -> dict:
     taxonomy_id = PRODUCT_TAXONOMY.get(design.product_type)
     if taxonomy_id is None:
         raise RuntimeError(f"No Etsy taxonomy mapping for product_type={design.product_type!r}")
+    ship_dims = PRODUCT_SHIP_DIMENSIONS.get(design.product_type, {})
 
     listing = etsy_client.create_draft_listing(
         shop["shop_id"],
@@ -419,7 +430,11 @@ def _stage_design(design, shop: Dict) -> dict:
             "when_made": "made_to_order",
             "taxonomy_id": taxonomy_id,
             "shipping_profile_id": shop["shipping_profile_id"],
+            "readiness_state_id": shop["readiness_state_id"],
             "is_supply": False,
+            "item_weight_unit": "oz",
+            "item_dimensions_unit": "in",
+            **ship_dims,
         },
     )
     listing_id = listing["listing_id"]

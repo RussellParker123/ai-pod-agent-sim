@@ -34,3 +34,18 @@ PRODUCT_PRINTFUL_VARIANT = {
     "tshirt": 4012,
     "tote": 10457,
 }
+
+# Shipping weight/box dimensions for a calculated shipping profile — Etsy
+# requires these on every physical listing that uses a "calculated"
+# (vs. flat-rate) shipping profile. Conservative real-world packaged
+# estimates for each Printful blank above; your actual package may run a
+# bit lighter, but overestimating slightly just means Etsy shows a
+# marginally higher calculated shipping cost to buyers, never a failure.
+#   mug    -> ~1 lb (16 oz) boxed, roughly 4x4x4 in
+#   tshirt -> ~6 oz in a poly mailer, roughly 12x9x1 in
+#   tote   -> ~8 oz in a poly mailer, roughly 15x16x1 in
+PRODUCT_SHIP_DIMENSIONS = {
+    "mug": {"item_weight": 16, "item_length": 4, "item_width": 4, "item_height": 4},
+    "tshirt": {"item_weight": 6, "item_length": 12, "item_width": 9, "item_height": 1},
+    "tote": {"item_weight": 8, "item_length": 15, "item_width": 16, "item_height": 1},
+}

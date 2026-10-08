@@ -28,22 +28,41 @@ def _headers() -> Dict[str, str]:
     }
 
 
+def _raise_for_status(resp: requests.Response) -> None:
+    """Like resp.raise_for_status(), but includes Etsy's JSON error body
+    (e.g. {"error": "invalid_taxonomy_id", ...}) in the exception message
+    instead of swallowing it — Etsy's 400s are almost always a validation
+    error on one specific field, and the generic requests message alone
+    ("400 Client Error: Bad Request for url: ...") gives no way to tell
+    which one."""
+    if resp.ok:
+        return
+    detail = ""
+    try:
+        detail = f" | Etsy response: {resp.json()}"
+    except ValueError:
+        detail = f" | Etsy response: {resp.text[:500]}"
+    raise requests.HTTPError(f"{resp.status_code} {resp.reason} for url: {resp.url}{detail}", response=resp)
+
+
 def _get(path: str, params: Optional[dict] = None) -> dict:
     resp = requests.get(f"{BASE_URL}{path}", headers=_headers(), params=params, timeout=30)
-    resp.raise_for_status()
+    _raise_for_status(resp)
     return resp.json()
 
 
-def _post(path: str, json_body: Optional[dict] = None, files=None, data=None) -> dict:
+def _post(path: str, json_body: Optional[dict] = None, files=None, data=None, params: Optional[dict] = None) -> dict:
     headers = _headers()
-    resp = requests.post(f"{BASE_URL}{path}", headers=headers, json=json_body, files=files, data=data, timeout=30)
-    resp.raise_for_status()
+    resp = requests.post(
+        f"{BASE_URL}{path}", headers=headers, json=json_body, files=files, data=data, params=params, timeout=30
+    )
+    _raise_for_status(resp)
     return resp.json()
 
 
 def _put(path: str, json_body: Optional[dict] = None) -> dict:
     resp = requests.put(f"{BASE_URL}{path}", headers=_headers(), json=json_body, timeout=30)
-    resp.raise_for_status()
+    _raise_for_status(resp)
     return resp.json()
 
 
@@ -70,16 +89,62 @@ def get_shipping_profiles(shop_id: int) -> List[dict]:
     return _get(f"/shops/{shop_id}/shipping-profiles").get("results", [])
 
 
+def get_readiness_state_definitions(shop_id: int) -> List[dict]:
+    """Etsy's newer "processing profiles" system: every *physical* listing
+    now requires a readiness_state_id (in addition to shipping_profile_id),
+    which replaces the old per-listing min/max processing-time fields. See
+    https://developers.etsy.com/documentation/tutorials/migration/"""
+    return _get(f"/shops/{shop_id}/readiness-state-definitions").get("results", [])
+
+
+def create_readiness_state_definition(
+    shop_id: int,
+    readiness_state: str = "made_to_order",
+    min_processing_time: int = 2,
+    max_processing_time: int = 5,
+    processing_time_unit: str = "days",
+) -> dict:
+    """Creates a new processing profile for the shop and returns it
+    (including the readiness_state_id needed by create_draft_listing)."""
+    return _post(
+        f"/shops/{shop_id}/readiness-state-definitions",
+        json_body={
+            "readiness_state": readiness_state,
+            "min_processing_time": min_processing_time,
+            "max_processing_time": max_processing_time,
+            "processing_time_unit": processing_time_unit,
+        },
+    )
+
+
+def get_or_create_readiness_state_id(shop_id: int, readiness_state: str = "made_to_order") -> int:
+    """Reuses an existing processing profile matching `readiness_state` if
+    the shop already has one (e.g. set up manually in Shop Manager),
+    otherwise creates a fresh one. Print-on-demand items are always
+    produced after the order comes in, so "made_to_order" is the correct
+    state for everything this pipeline lists."""
+    for profile in get_readiness_state_definitions(shop_id):
+        if profile.get("readiness_state") == readiness_state:
+            return profile["readiness_state_id"]
+    created = create_readiness_state_definition(shop_id, readiness_state=readiness_state)
+    return created["readiness_state_id"]
+
+
 def create_draft_listing(shop_id: int, listing: dict) -> dict:
     """Creates a new listing in draft (unpublished) state.
 
     `listing` should include at least: quantity, title, description, price,
-    who_made, when_made, taxonomy_id, shipping_profile_id. state defaults to
-    'draft' server-side unless explicitly set to 'active'.
+    who_made, when_made, taxonomy_id, shipping_profile_id, readiness_state_id
+    (required for physical listings under Etsy's processing-profiles system
+    — see get_or_create_readiness_state_id). state defaults to 'draft'
+    server-side unless explicitly set to 'active'.
+
+    `legacy=false` is required on this request while readiness_state_id is
+    in play; Etsy rejects legacy processing-time params together with it.
     """
     body = dict(listing)
     body.setdefault("state", "draft")
-    return _post(f"/shops/{shop_id}/listings", json_body=body)
+    return _post(f"/shops/{shop_id}/listings", json_body=body, params={"legacy": "false"})
 
 
 def upload_listing_image(shop_id: int, listing_id: int, image_path: str, rank: int = 1) -> dict:
