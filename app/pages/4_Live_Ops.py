@@ -238,6 +238,7 @@ else:
             "in data/images/ and reuse any you like for a manual listing."
         )
     sorted_archive = sorted(archive, key=lambda e: (e.get("manager_score") is None, -(e.get("manager_score") or 0)))
+    already_staged = {e["design_id"] for e in pipeline.list_all()}
     cols = st.columns(4)
     for i, entry in enumerate(sorted_archive):
         with cols[i % 4]:
@@ -248,6 +249,44 @@ else:
                 st.caption(f"**{entry['design_id']}** — {entry.get('niche') or '?'}\nscore {score} ({decision})")
             else:
                 st.caption(f"**{entry['design_id']}** — no score recorded")
+
+            if entry["design_id"] in already_staged:
+                st.caption("✅ already staged")
+            else:
+                with st.expander("♻️ Stage as Etsy draft"):
+                    st.caption("No new image is generated — this reuses the file you already paid for.")
+                    with st.form(key=f"stage_form_{entry['design_id']}"):
+                        niche_in = st.text_input("Niche", value=entry.get("niche") or "", key=f"niche_{entry['design_id']}")
+                        product_in = st.selectbox(
+                            "Product type", ["mug", "tshirt", "tote"],
+                            index=["mug", "tshirt", "tote"].index(entry["product_type"]) if entry.get("product_type") in ("mug", "tshirt", "tote") else 0,
+                            key=f"product_{entry['design_id']}",
+                        )
+                        price_in = st.number_input(
+                            "Price ($)", min_value=0.01, value=float(entry.get("price") or 15.0),
+                            step=0.5, key=f"price_{entry['design_id']}",
+                        )
+                        desc_in = st.text_area(
+                            "Listing description", value=entry.get("prompt") or "", key=f"desc_{entry['design_id']}",
+                        )
+                        submitted = st.form_submit_button("Create Etsy draft from this image")
+                    if submitted:
+                        if not niche_in.strip() or not desc_in.strip():
+                            st.error("Niche and description are required.")
+                        else:
+                            try:
+                                pipeline.stage_archived_image(
+                                    design_id=entry["design_id"],
+                                    image_uri=entry["image_uri"],
+                                    niche=niche_in.strip(),
+                                    product_type=product_in,
+                                    price=float(price_in),
+                                    description=desc_in.strip(),
+                                )
+                                st.success(f"Staged {entry['design_id']} as a new Etsy draft — check Pending approvals below.")
+                                st.rerun()
+                            except Exception as e:  # noqa: BLE001
+                                st.error(f"Failed to stage: {e}")
 
 st.markdown("---")
 st.subheader("Order fulfillment sync")

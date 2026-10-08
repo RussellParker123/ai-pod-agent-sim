@@ -21,7 +21,7 @@ from app.integrations import etsy_client, openai_image, openai_text, printful_cl
 from app.integrations.config import DATA_DIR
 from app.live.catalog_map import PRODUCT_PRINTFUL_VARIANT, PRODUCT_TAXONOMY
 from app.live.gpt_agents import prompt_agent_live, trend_agent_live
-from app.sim.agents import compliance_agent, mockup_agent, pricing_agent
+from app.sim.agents import Design, compliance_agent, mockup_agent, pricing_agent
 from app.sim.manager import ManagerAgent
 from app.sim.run_simulation import load_etsy_config
 
@@ -107,6 +107,55 @@ def list_image_archive() -> List[dict]:
                     }
                 )
     return manifest + orphaned
+
+
+# Mirrors the base_costs used by app.sim.agents.mockup_agent, so a manually
+# staged archive image gets the same real unit economics as a batch-run one.
+PRODUCT_UNIT_COSTS = {"mug": 6.5, "tshirt": 9.0, "tote": 7.0}
+
+
+def stage_archived_image(
+    design_id: str,
+    image_uri: str,
+    niche: str,
+    product_type: str,
+    price: float,
+    description: str,
+) -> dict:
+    """Turns an already-generated image from the Image Archive — one that
+    never got queued (e.g. from a past run that was dropped or crashed
+    before completing) — into a real Etsy draft listing + Printful mockup,
+    *without* generating any new image or spending any new OpenAI credits.
+    You've already reviewed the image yourself by choosing to stage it, so
+    this skips the (simulated) compliance_agent and marks it approved
+    directly. Appends to the same pending-approval queue as a normal batch
+    run — you still click Approve & publish to make it live."""
+    design_id = design_id.strip()
+    if any(e["design_id"] == design_id for e in _load_pending()):
+        raise ValueError(f"design_id={design_id!r} has already been staged once.")
+
+    shop = _get_shop_context()
+    design = Design(
+        design_id=design_id,
+        niche=niche,
+        trend_score=0.0,
+        prompt=description,
+        image_uri=image_uri,
+        compliance_status="pass",
+        compliance_notes="manually reviewed by human before staging from the image archive",
+        product_type=product_type,
+        unit_cost=PRODUCT_UNIT_COSTS.get(product_type, 7.0),
+        price=price,
+        approved=True,
+    )
+    entry = _stage_design(design, shop)
+    entry["published_by"] = None
+    entry["source"] = "image_archive"
+
+    pending = _load_pending()
+    pending.append(entry)
+    _save_pending(pending)
+    return entry
 
 
 def _get_shop_context() -> Dict:
