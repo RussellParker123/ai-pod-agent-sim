@@ -11,6 +11,7 @@ DEFAULT_WORKERS = {
     "compliance": ["compliance-1", "compliance-2"],
     "mockup": ["mockup-1", "mockup-2"],
     "pricing": ["pricing-1", "pricing-2"],
+    "marketing": ["marketing-1"],
 }
 
 

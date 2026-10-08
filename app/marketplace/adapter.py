@@ -1,5 +1,6 @@
 """Marketplace adapter interface with simulated and Etsy implementations."""
 import logging
+from dataclasses import fields
 from abc import ABC, abstractmethod
 from typing import Any, Dict, Optional
 
@@ -37,16 +38,23 @@ class EtsyAdapter(MarketplaceAdapter):
         }
 
     def list_design(self, design: Design, real: bool = False) -> Dict[str, Any]:
+        if isinstance(design, dict):
+            values = {f.name: design[f.name] for f in fields(Design) if f.name in design}
+            values.setdefault("niche", "")
+            values.setdefault("trend_score", 0.0)
+            design = Design(**values)
         if not real:
             return self._simulate(design)
         try:
             product = PRODUCT_TITLES.get(design.product_type, design.product_type.title() or "Print")
-            title = f"{design.niche.title()} {product} - Original Art"
+            marketing = design.marketing or {}
+            title = marketing.get("title") or f"{design.niche.title()} {product} - Original Art"
             description = (
-                f"Original {design.niche} design on a {product.lower()}, made to order.\n\n"
-                "Design created with AI assistance (AI-generated art disclosure)."
+                marketing.get("description")
+                or f"Original {design.niche} design on a {product.lower()}, made to order."
             )
-            tags = [design.niche, design.product_type, "ai art", "print on demand"]
+            description += "\n\nDesign created with AI assistance (AI-generated art disclosure)."
+            tags = marketing.get("tags") or [design.niche, design.product_type, "ai art", "print on demand"]
             listing = self.client.create_listing(
                 title=title,
                 description=description,

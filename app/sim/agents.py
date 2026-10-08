@@ -22,6 +22,7 @@ class Design:
     unit_cost: float = 0.0
     price: float = 0.0
     approved: bool = False
+    marketing: Dict = field(default_factory=dict)
 
 
 @dataclass
