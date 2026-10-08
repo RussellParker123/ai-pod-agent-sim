@@ -26,7 +26,7 @@ PRODUCT_TAXONOMY = {
 # GET /products/variant/{id} on 2026-10-08:
 #   mug    -> 1320  = White Glossy Mug, 11 oz
 #   tshirt -> 4012  = Bella + Canvas 3001 Unisex Staple T-Shirt, White / M
-#   tote   -> 10457 = Econscious EC8000 Organic Cotton Tote Bag, Black / One size
+#   tote   -> 10457 = Eco Tote Bag | Econscious EC8000, Black / One size
 # (the previous tote placeholder, 10386, was actually a mis-copied t-shirt
 # variant id, not a tote at all — fixed here.)
 PRODUCT_PRINTFUL_VARIANT = {
@@ -41,11 +41,16 @@ PRODUCT_PRINTFUL_VARIANT = {
 # GET /products/variant/{id} on 2026-10-08.
 #   mug    -> 19  = White Glossy Mug
 #   tshirt -> 71  = Bella + Canvas 3001 Unisex Staple T-Shirt
-#   tote   -> 367 = Econscious EC8000 Organic Cotton Tote Bag
+#   tote   -> 367 = Eco Tote Bag | Econscious EC8000
 PRODUCT_PRINTFUL_PRODUCT = {
     "mug": 19,
     "tshirt": 71,
     "tote": 367,
+}
+
+# Confirmed catalog details for listing copy; other products retain their templates.
+PRODUCT_CATALOG_DETAILS = {
+    "tote": {"name": "Eco Tote Bag | Econscious EC8000", "size": "One size"},
 }
 
 # Real Printful per-unit blank cost (the "Price" shown on the catalog page
@@ -55,6 +60,7 @@ PRODUCT_PRINTFUL_PRODUCT = {
 # GET /products/variant/{id} on 2026-10-08 (previous placeholders had
 # drifted quite far for tshirt/tote — tote in particular was ~55% under
 # the real cost, which would have priced totes at a loss).
+# Use the base catalog price, not the $13.91 Printful Growth account discount.
 PRODUCT_UNIT_COSTS = {
     "mug": 6.07,
     "tshirt": 11.92,
