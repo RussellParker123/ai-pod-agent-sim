@@ -85,6 +85,40 @@ def get_shop(shop_id: int) -> dict:
     return _get(f"/shops/{shop_id}")
 
 
+def update_shop(
+    shop_id: int,
+    title: Optional[str] = None,
+    announcement: Optional[str] = None,
+    sale_message: Optional[str] = None,
+    digital_sale_message: Optional[str] = None,
+) -> dict:
+    """Updates shop text fields via PUT /shops/{shop_id}.
+
+    Etsy's Open API v3 only exposes these four shop fields for writing.
+    There is no endpoint for the shop icon, banner image, "shop story", or
+    seller/about photo — those are web-UI-only features with no API
+    equivalent, confirmed against Etsy's official docs and by inspecting
+    this shop's own (all-null) image fields via get_shop().
+    """
+    body = {
+        k: v
+        for k, v in {
+            "title": title,
+            "announcement": announcement,
+            "sale_message": sale_message,
+            "digital_sale_message": digital_sale_message,
+        }.items()
+        if v is not None
+    }
+    if not body:
+        raise ValueError("update_shop() requires at least one field to update")
+    # Etsy's updateShop endpoint takes PUT, not PATCH, despite being a
+    # partial update (confirmed live: PATCH returns 404, PUT returns 200).
+    resp = requests.put(f"{BASE_URL}/shops/{shop_id}", headers=_headers(), json=body, timeout=30)
+    _raise_for_status(resp)
+    return resp.json()
+
+
 def get_shipping_profiles(shop_id: int) -> List[dict]:
     return _get(f"/shops/{shop_id}/shipping-profiles").get("results", [])
 
