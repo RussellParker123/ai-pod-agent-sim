@@ -13,10 +13,11 @@ from dataclasses import replace
 from pathlib import Path
 from typing import Dict, List
 
-from app.integrations import etsy_client, openai_image, printful_client
+from app.integrations import etsy_client, openai_image, openai_text, printful_client
 from app.integrations.config import DATA_DIR
 from app.live.catalog_map import PRODUCT_PRINTFUL_VARIANT, PRODUCT_TAXONOMY
-from app.sim.agents import compliance_agent, mockup_agent, pricing_agent, prompt_agent, trend_agent
+from app.live.gpt_agents import prompt_agent_live, trend_agent_live
+from app.sim.agents import compliance_agent, mockup_agent, pricing_agent
 from app.sim.manager import ManagerAgent
 from app.sim.run_simulation import load_etsy_config
 
@@ -128,8 +129,13 @@ def run_live_batch_stream(k: int = 6, team_niches: int = 2, team_size: int = 3):
 
     manager = ManagerAgent()
 
-    yield {"stage": "trend", "status": "active", "message": f"Scouting {k * 4} candidate designs across your niches..."}
-    designs = trend_agent(niches=config["niches"], k=k * 4)
+    trend_note = "via GPT" if openai_text.is_configured() else "simulated — add OPENAI_API_KEY for real GPT research"
+    yield {
+        "stage": "trend",
+        "status": "active",
+        "message": f"Scouting {k * 4} candidate designs across your niches ({trend_note})...",
+    }
+    designs = trend_agent_live(niches=config["niches"], k=k * 4)
     designs = manager.review_trends(designs)
     yield {
         "stage": "trend",
@@ -138,8 +144,9 @@ def run_live_batch_stream(k: int = 6, team_niches: int = 2, team_size: int = 3):
         "count": len(designs),
     }
 
-    yield {"stage": "prompt", "status": "active", "message": "Writing original, trademark-safe prompts..."}
-    prompt_agent(designs)
+    prompt_note = "via GPT" if openai_text.is_configured() else "templated — add OPENAI_API_KEY for real GPT prompts"
+    yield {"stage": "prompt", "status": "active", "message": f"Writing original, trademark-safe prompts ({prompt_note})..."}
+    prompt_agent_live(designs)
     yield {"stage": "prompt", "status": "done", "message": f"Wrote {len(designs)} prompt(s).", "count": len(designs)}
 
     before_team = len(designs)
