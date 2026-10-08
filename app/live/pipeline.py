@@ -173,10 +173,16 @@ def _get_shop_context() -> Dict:
     # "made_to_order" is always the right state; reuse one if the shop
     # already has it (e.g. set up manually), otherwise create it once.
     readiness_state_id = etsy_client.get_or_create_readiness_state_id(shop_id, "made_to_order")
+    # return_policy_id isn't required to save a draft, but Etsy rejects
+    # *publishing* (state -> active) any physical listing without one, so
+    # it has to be resolved up front alongside everything else a listing
+    # needs to go live.
+    return_policy_id = etsy_client.get_or_create_return_policy_id(shop_id)
     return {
         "shop_id": shop_id,
         "shipping_profile_id": profiles[0]["shipping_profile_id"],
         "readiness_state_id": readiness_state_id,
+        "return_policy_id": return_policy_id,
     }
 
 
@@ -462,6 +468,7 @@ def _stage_design(design, shop: Dict) -> dict:
             "taxonomy_id": taxonomy_id,
             "shipping_profile_id": shop["shipping_profile_id"],
             "readiness_state_id": shop["readiness_state_id"],
+            "return_policy_id": shop["return_policy_id"],
             "is_supply": False,
             "item_weight_unit": "oz",
             "item_dimensions_unit": "in",

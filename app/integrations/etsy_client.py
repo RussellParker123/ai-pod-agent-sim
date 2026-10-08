@@ -60,8 +60,8 @@ def _post(path: str, json_body: Optional[dict] = None, files=None, data=None, pa
     return resp.json()
 
 
-def _put(path: str, json_body: Optional[dict] = None) -> dict:
-    resp = requests.put(f"{BASE_URL}{path}", headers=_headers(), json=json_body, timeout=30)
+def _patch(path: str, json_body: Optional[dict] = None) -> dict:
+    resp = requests.patch(f"{BASE_URL}{path}", headers=_headers(), json=json_body, timeout=30)
     _raise_for_status(resp)
     return resp.json()
 
@@ -130,6 +130,35 @@ def get_or_create_readiness_state_id(shop_id: int, readiness_state: str = "made_
     return created["readiness_state_id"]
 
 
+def get_return_policies(shop_id: int) -> List[dict]:
+    return _get(f"/shops/{shop_id}/policies/return").get("results", [])
+
+
+def create_return_policy(shop_id: int, accepts_returns: bool = True, accepts_exchanges: bool = True, return_deadline: int = 30) -> dict:
+    return _post(
+        f"/shops/{shop_id}/policies/return",
+        json_body={
+            "accepts_returns": accepts_returns,
+            "accepts_exchanges": accepts_exchanges,
+            "return_deadline": return_deadline,
+        },
+    )
+
+
+def get_or_create_return_policy_id(shop_id: int) -> int:
+    """return_policy_id isn't required to *create* a draft listing, but
+    Etsy rejects publishing (state -> active) any physical listing without
+    one — see "How it's made" > "Returns and exchanges" in the listing
+    editor. Reuses the shop's existing policy if set, otherwise creates a
+    standard 30-day returns-and-exchanges policy (matches the "Simple
+    policy" default Etsy itself suggests)."""
+    policies = get_return_policies(shop_id)
+    if policies:
+        return policies[0]["return_policy_id"]
+    created = create_return_policy(shop_id)
+    return created["return_policy_id"]
+
+
 def create_draft_listing(shop_id: int, listing: dict) -> dict:
     """Creates a new listing in draft (unpublished) state.
 
@@ -161,7 +190,7 @@ def upload_listing_image(shop_id: int, listing_id: int, image_path: str, rank: i
 def publish_listing(shop_id: int, listing_id: int) -> dict:
     """Flips a draft listing to 'active' (publicly visible). This is the
     action that must only ever follow explicit human approval."""
-    return _put(f"/shops/{shop_id}/listings/{listing_id}", json_body={"state": "active"})
+    return _patch(f"/shops/{shop_id}/listings/{listing_id}", json_body={"state": "active"})
 
 
 def get_shop_receipts(shop_id: int, was_paid: bool = True, limit: int = 25) -> List[dict]:
