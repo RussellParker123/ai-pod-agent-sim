@@ -242,7 +242,7 @@ else:
     cols = st.columns(4)
     for i, entry in enumerate(sorted_archive):
         with cols[i % 4]:
-            st.image(entry["image_uri"], use_container_width=True)
+            st.image(entry["image_uri"], use_column_width=True)
             score = entry.get("manager_score")
             decision = entry.get("manager_decision")
             if score is not None:
