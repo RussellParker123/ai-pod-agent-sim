@@ -58,9 +58,9 @@ def generate_branding_text() -> Dict[str, str]:
     )
     result = openai_text.chat_json(system, user)
     return {
-        "title": result["title"].strip()[:55],
-        "announcement": result["announcement"].strip()[:160],
-        "story": result["story"].strip(),
+        "title": str(result["title"]).strip()[:55],
+        "announcement": str(result["announcement"]).strip()[:160],
+        "story": str(result["story"]).strip(),
     }
 
 
