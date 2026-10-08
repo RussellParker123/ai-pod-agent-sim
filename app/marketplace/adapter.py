@@ -5,6 +5,7 @@ from abc import ABC, abstractmethod
 from typing import Any, Dict, Optional
 
 from app.marketplace.etsy_client import EtsyClient, EtsyError
+from app.live.catalog_map import PRODUCT_CATALOG_DETAILS
 from app.sim.agents import Design
 
 log = logging.getLogger(__name__)
@@ -47,11 +48,16 @@ class EtsyAdapter(MarketplaceAdapter):
             return self._simulate(design)
         try:
             product = PRODUCT_TITLES.get(design.product_type, design.product_type.title() or "Print")
+            catalog = PRODUCT_CATALOG_DETAILS.get(design.product_type, {})
+            product = catalog.get("name", product)
             marketing = design.marketing or {}
             title = marketing.get("title") or f"{design.niche.title()} {product} - Original Art"
             description = (
                 marketing.get("description")
-                or f"Original {design.niche} design on a {product.lower()}, made to order."
+                or (
+                    f"Original {design.niche} design on a {product if catalog else product.lower()}, made to order."
+                    + (f" {catalog['size']}." if catalog else "")
+                )
             )
             description += "\n\nDesign created with AI assistance (AI-generated art disclosure)."
             tags = marketing.get("tags") or [design.niche, design.product_type, "ai art", "print on demand"]

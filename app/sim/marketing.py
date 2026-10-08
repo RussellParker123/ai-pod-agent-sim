@@ -3,6 +3,7 @@ import re
 from typing import List
 
 from app.sim.agents import Design
+from app.live.catalog_map import PRODUCT_CATALOG_DETAILS
 
 
 PRODUCT_NAMES = {"mug": "mug", "tshirt": "t-shirt", "tote": "tote bag"}
@@ -35,9 +36,12 @@ def marketing_agent(designs: List[Design]) -> None:
         tags = list(dict.fromkeys(
             term for term in candidates if len(term) <= 20
         ))[:13]
-        title = f"{product.title()} - {niche.title()}"[:140].rstrip()
+        catalog = PRODUCT_CATALOG_DETAILS.get(design.product_type, {})
+        product_name = catalog.get("name", product.title())
+        title = f"{product_name} - {niche.title()}"[:140].rstrip()
         description = (
-            f"{product.title()} featuring {niche}-themed artwork."
+            f"{product_name} featuring {niche}-themed artwork."
+            + (f" {catalog['size']}." if catalog else "")
             + (f" Design style: {', '.join(styles)}." if styles else "")
         )
         design.marketing = {

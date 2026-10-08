@@ -22,6 +22,7 @@ import requests
 from app.integrations import etsy_client, openai_image, openai_text, printful_client
 from app.integrations.config import DATA_DIR
 from app.live.catalog_map import (
+    PRODUCT_CATALOG_DETAILS,
     PRODUCT_PRINTFUL_PRODUCT,
     PRODUCT_PRINTFUL_VARIANT,
     PRODUCT_SHIP_DIMENSIONS,
@@ -502,13 +503,18 @@ def _stage_design(design, shop: Dict) -> dict:
     if taxonomy_id is None:
         raise RuntimeError(f"No Etsy taxonomy mapping for product_type={design.product_type!r}")
     ship_dims = PRODUCT_SHIP_DIMENSIONS.get(design.product_type, {})
+    catalog = PRODUCT_CATALOG_DETAILS.get(design.product_type, {})
+    product_name = catalog.get("name", design.product_type.title())
+    description = design.prompt
+    if catalog:
+        description += f"\n\n{product_name} — {catalog['size']}."
 
     listing = etsy_client.create_draft_listing(
         shop["shop_id"],
         {
             "quantity": 100,
-            "title": f"{design.niche.title()} Design — {design.product_type.title()}"[:140],
-            "description": design.prompt,
+            "title": f"{design.niche.title()} Design — {product_name}"[:140],
+            "description": description,
             "price": design.price,
             "who_made": "i_did",
             "when_made": "made_to_order",
@@ -563,7 +569,7 @@ def _stage_design(design, shop: Dict) -> dict:
         variant_id = PRODUCT_PRINTFUL_VARIANT.get(design.product_type)
         if variant_id:
             printful_product = printful_client.create_sync_product(
-                name=f"{design.design_id}-{design.product_type}",
+                name=f"{design.design_id}-{catalog.get('name', design.product_type)}",
                 variant_id=variant_id,
                 image_url=etsy_image_url,
                 retail_price=f"{design.price:.2f}",

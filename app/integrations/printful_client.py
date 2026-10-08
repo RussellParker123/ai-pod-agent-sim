@@ -118,7 +118,9 @@ def generate_mockup(
     """
     try:
         printfiles = get_variant_printfile(product_id, variant_id)
-        area = printfiles.get(placement) or next(iter(printfiles.values()), {})
+        if placement not in printfiles and printfiles:
+            placement = next(iter(printfiles))
+        area = printfiles.get(placement, {})
         width, height = area.get("width"), area.get("height")
         file_entry = {"placement": placement, "image_url": image_url}
         if width and height:
