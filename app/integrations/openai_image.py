@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import base64
 import warnings
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import List
 
@@ -41,10 +42,14 @@ def generate_image(prompt: str, out_path: Path, size: str = "1024x1024") -> Path
     return out_path
 
 
-def image_agent_live(designs: List[Design]) -> None:
+def image_agent_live(designs: List[Design], max_workers: int = 4) -> None:
     """Live replacement for app.sim.agents.image_agent: generates a real
     image per design via OpenAI when configured, otherwise falls back to
-    the simulated stub so the pipeline keeps working without the key."""
+    the simulated stub so the pipeline keeps working without the key.
+
+    Designs are generated concurrently (up to max_workers at once) so a
+    "team" of several designs for the same niche finishes in roughly the
+    time of one call, not one-at-a-time."""
     if not is_configured():
         warnings.warn(
             "OPENAI_API_KEY not set — falling back to simulated image URIs. "
@@ -56,7 +61,18 @@ def image_agent_live(designs: List[Design]) -> None:
         return
 
     images_dir = DATA_DIR / "images"
-    for d in designs:
+
+    def _one(d: Design) -> None:
         out_path = images_dir / f"{d.design_id}.png"
         generate_image(d.prompt, out_path)
         d.image_uri = str(out_path)
+
+    if len(designs) <= 1:
+        for d in designs:
+            _one(d)
+        return
+
+    with ThreadPoolExecutor(max_workers=min(max_workers, len(designs))) as pool:
+        futures = {pool.submit(_one, d): d for d in designs}
+        for future in as_completed(futures):
+            future.result()  # re-raise any generation error on the main thread

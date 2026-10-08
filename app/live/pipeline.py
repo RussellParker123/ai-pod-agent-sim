@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import json
+from dataclasses import replace
 from pathlib import Path
 from typing import Dict, List
 
@@ -47,6 +48,42 @@ def _get_shop_context() -> Dict:
     return {"shop_id": shop_id, "shipping_profile_id": profiles[0]["shipping_profile_id"]}
 
 
+STYLE_MODIFIERS = [
+    "bold flat-color vector style",
+    "soft painterly watercolor style",
+    "retro halftone screen-print style",
+    "minimalist single-line-art style",
+    "vibrant geometric pop-art style",
+]
+
+
+def _build_image_team(designs: List, team_niches: int, team_size: int) -> List:
+    """For the top `team_niches` niches (by trend_score), replaces each of
+    their designs with `team_size` style-variant copies — a small "art
+    team" each producing a different take on the same trending niche, so
+    the manager/human has real options to pick from instead of one shot.
+    Every other niche's designs pass through unchanged."""
+    if team_niches <= 0 or team_size <= 1 or not designs:
+        return designs
+
+    best_by_niche: Dict[str, float] = {}
+    for d in designs:
+        best_by_niche[d.niche] = max(best_by_niche.get(d.niche, 0.0), d.trend_score)
+    popular = {n for n, _ in sorted(best_by_niche.items(), key=lambda kv: kv[1], reverse=True)[:team_niches]}
+
+    expanded = []
+    for d in designs:
+        if d.niche not in popular:
+            expanded.append(d)
+            continue
+        for i in range(team_size):
+            variant = replace(d, design_id=f"{d.design_id}-v{i + 1}")
+            style = STYLE_MODIFIERS[i % len(STYLE_MODIFIERS)]
+            variant.prompt = f"{d.prompt}, {style}"
+            expanded.append(variant)
+    return expanded
+
+
 def run_live_batch(k: int = 6) -> List[dict]:
     """Generates up to k new greenlit designs, creates Etsy draft listings +
     Printful mockups for each, and appends them to the pending-approval queue.
@@ -59,7 +96,7 @@ def run_live_batch(k: int = 6) -> List[dict]:
     return queued
 
 
-def run_live_batch_stream(k: int = 6):
+def run_live_batch_stream(k: int = 6, team_niches: int = 2, team_size: int = 3):
     """Same pipeline as run_live_batch(), but yields a progress event after
     each agent stage completes so a UI can show the real agents working
     live, stage by stage, instead of just a final result. Every stage here
@@ -67,6 +104,12 @@ def run_live_batch_stream(k: int = 6):
     app/sim/manager.py) — only the image stage swaps in real OpenAI
     generation, and two new stages (etsy, printful) do real API calls that
     don't exist in pure simulation mode.
+
+    team_niches/team_size: the top `team_niches` trending niches each get a
+    small "art team" of `team_size` style variants generated in parallel
+    (see _build_image_team), instead of a single design. This increases
+    real OpenAI spend proportionally — set team_size=1 or team_niches=0 to
+    disable and go back to one image per design.
 
     Yields dicts: {"stage": str, "status": "active"|"done", "message": str,
     "count": Optional[int]}. The final event is
@@ -99,8 +142,20 @@ def run_live_batch_stream(k: int = 6):
     prompt_agent(designs)
     yield {"stage": "prompt", "status": "done", "message": f"Wrote {len(designs)} prompt(s).", "count": len(designs)}
 
+    before_team = len(designs)
+    designs = _build_image_team(designs, team_niches=team_niches, team_size=team_size)
+    added = len(designs) - before_team
+    if added > 0:
+        yield {
+            "stage": "image_team",
+            "status": "done",
+            "message": f"Assembled art teams of {team_size} on the top {team_niches} trending niche(s) "
+            f"(+{added} style variant(s) to generate).",
+            "count": len(designs),
+        }
+
     if openai_image.is_configured():
-        yield {"stage": "image", "status": "active", "message": "Generating real AI art via OpenAI..."}
+        yield {"stage": "image", "status": "active", "message": f"Generating {len(designs)} real AI image(s) via OpenAI (in parallel)..."}
     else:
         yield {
             "stage": "image",
@@ -260,6 +315,8 @@ def main() -> None:
 
     run_p = sub.add_parser("run-batch", help="Generate a new batch and queue it for approval")
     run_p.add_argument("--k", type=int, default=6)
+    run_p.add_argument("--team-niches", type=int, default=2, help="Top N trending niches that get an art team")
+    run_p.add_argument("--team-size", type=int, default=3, help="Style variants generated per art-team niche")
 
     approve_p = sub.add_parser("approve", help="Publish a pending design's Etsy listing live")
     approve_p.add_argument("design_id")
@@ -272,7 +329,7 @@ def main() -> None:
     args = p.parse_args()
     if args.action == "run-batch":
         queued = []
-        for event in run_live_batch_stream(k=args.k):
+        for event in run_live_batch_stream(k=args.k, team_niches=args.team_niches, team_size=args.team_size):
             if event["stage"] == "complete":
                 queued = event["queued"]
             else:

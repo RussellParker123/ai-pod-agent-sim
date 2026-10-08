@@ -47,6 +47,7 @@ STAGE_NODES = [
     ("etsy_connect", "📡", "ETSY UPLINK"),
     ("trend", "📈", "TREND SCANNER"),
     ("prompt", "⌨️", "PROMPT FORGE"),
+    ("image_team", "🧑‍🤝‍🧑", "ART TEAM ASSEMBLY"),
     ("image", "🖼️", "ART SYNTH // OPENAI"),
     ("compliance", "🛡️", "COMPLIANCE DAEMON"),
     ("mockup", "🧵", "MOCKUP RENDER"),
@@ -106,25 +107,34 @@ def _cyber_html(stage_state: dict, log_lines: list) -> str:
 st.markdown("---")
 st.subheader("Live Agent Pipeline")
 k = st.number_input("How many designs to queue", min_value=1, max_value=20, value=6)
+with st.expander("🎨 Art team settings (multiple AI artists per trending niche)"):
+    st.caption(
+        "The top N niches the trend/research agent scores highest each get their own small "
+        "team of artist agents, each rendering the same niche in a different style, generated "
+        "in parallel. The AI manager then picks the strongest variant(s) to actually list — "
+        "more variants = more real OpenAI image spend."
+    )
+    team_niches = st.number_input("Niches that get an art team", min_value=0, max_value=5, value=2)
+    team_size = st.number_input("Artists per team (style variants)", min_value=1, max_value=5, value=3)
 run_clicked = st.button("▶ Run live batch (creates real Etsy DRAFT listings, not public)")
 
 console_slot = st.empty()
 stage_state = {key: "idle" for key, _, _ in STAGE_NODES}
 log_lines: list = []
 with console_slot:
-    components.html(_cyber_html(stage_state, log_lines), height=280)
+    components.html(_cyber_html(stage_state, log_lines), height=330)
 
 if run_clicked:
     try:
         queued = []
-        for event in pipeline.run_live_batch_stream(k=int(k)):
+        for event in pipeline.run_live_batch_stream(k=int(k), team_niches=int(team_niches), team_size=int(team_size)):
             if event["stage"] == "complete":
                 queued = event["queued"]
                 continue
             stage_state[event["stage"]] = event["status"]
             log_lines.append(f"&gt; [{event['stage']}] {event['message']}")
             with console_slot:
-                components.html(_cyber_html(stage_state, log_lines[-10:]), height=280)
+                components.html(_cyber_html(stage_state, log_lines[-10:]), height=330)
             time.sleep(0.35)  # just pacing for readability — every event above is real work already done
         st.success(f"Queued {len(queued)} design(s) for approval.")
     except NotConfiguredError as e:
