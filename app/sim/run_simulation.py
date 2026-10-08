@@ -1,6 +1,7 @@
 import argparse
 import json
 import logging
+import random
 from dataclasses import asdict
 from pathlib import Path
 from typing import List, Optional
@@ -46,6 +47,8 @@ DEFAULT_MARGIN = 0.42
 ETSY_CONFIG_PATH = DATA_DIR / "etsy_config.json"
 TEAM_STATE_FILENAME = "team_state.json"
 MAX_REUSE_PER_RUN = 6
+DEFAULT_BATCH_SIZE = 24
+MAX_BATCH_SIZE = 200
 
 
 def load_etsy_config() -> dict:
@@ -86,7 +89,17 @@ def run_once(
     real: bool = False,
     draft_only: bool = False,
     team: AgentTeam = None,
+    batch_size: int = DEFAULT_BATCH_SIZE,
+    seed: Optional[int] = None,
 ) -> str:
+    """Run one batch and save ``data/run_*.json``. ``batch_size`` is the
+    number of candidate designs the trend agent proposes; ``seed`` makes the
+    simulated (offline) randomness reproducible."""
+    batch_size = int(batch_size)
+    if not 1 <= batch_size <= MAX_BATCH_SIZE:
+        raise ValueError(f"batch_size must be between 1 and {MAX_BATCH_SIZE}")
+    if seed is not None:
+        random.seed(int(seed))
     niches = DEFAULT_NICHES
     product_types = DEFAULT_PRODUCT_TYPES
     target_margin = DEFAULT_MARGIN
@@ -116,11 +129,11 @@ def run_once(
     team_state_path = DATA_DIR / TEAM_STATE_FILENAME
     team = team or load_team_state(team_state_path)
     manager = ManagerAgent(manager_id=team.manager_id)
-    run_name = f"run_{timestamp()}.json"
+    run_name = _unique_run_name()
     store = recycling.RecyclingStore(DATA_DIR / recycling.RECYCLING_FILENAME)
 
     research = research_agent(niches, etsy_connector=etsy_connector)
-    designs = trend_agent(niches=niches, k=24, etsy_connector=etsy_connector)
+    designs = trend_agent(niches=niches, k=batch_size, etsy_connector=etsy_connector)
     apply_research(designs, research)  # research -> trend/prompt departments
     candidates = list(designs)
     designs = manager.review_trends(designs)
@@ -236,6 +249,16 @@ def run_once(
     return str(path)
 
 
+def _unique_run_name() -> str:
+    """``run_<timestamp>.json``; a second run in the same second gets a
+    suffix instead of overwriting the earlier run."""
+    stamp = timestamp()
+    name, n = f"run_{stamp}.json", 2
+    while (DATA_DIR / name).exists():
+        name, n = f"run_{stamp}_{n}.json", n + 1
+    return name
+
+
 def _recycle_rejections(designs, manager, team, store, research, product_types, run_name) -> dict:
     """Deliver manager/compliance-rejected art (which already has an image)
     to the Recycling Facility, then let the recycling department analyse it."""
@@ -290,6 +313,8 @@ def _recycle_rejections(designs, manager, team, store, research, product_types, 
                 "status": r["status"],
                 "rejected_by": r["rejection"]["by"],
                 "top_suggestion": ((r.get("analysis") or {}).get("suggestions") or [{}])[0].get("type"),
+                # Snapshot of the recycler's plan at run time (the queue may change later).
+                "analysis": recycling.analysis_summary(r.get("analysis")),
             }
             for r in records
         ],
@@ -324,6 +349,9 @@ def build_arg_parser() -> argparse.ArgumentParser:
         help="publish a previously reviewed run; requires saved per-design approvals",
     )
     p.add_argument("--yes", action="store_true", help="skip the confirmation prompt for --real")
+    p.add_argument("--batch-size", type=int, default=DEFAULT_BATCH_SIZE,
+                   help=f"candidate designs proposed by the trend agent (1-{MAX_BATCH_SIZE})")
+    p.add_argument("--seed", type=int, default=None, help="seed for reproducible simulated randomness")
     return p
 
 
@@ -383,5 +411,6 @@ if __name__ == "__main__":
             parser.error("--publish-run requires --real")
         p = publish_reviewed_run(args.publish_run, real=real, draft_only=args.draft_only)
     else:
-        p = run_once(etsy_mode=args.etsy_mode, real=real, draft_only=args.draft_only)
+        p = run_once(etsy_mode=args.etsy_mode, real=real, draft_only=args.draft_only,
+                     batch_size=args.batch_size, seed=args.seed)
     print(f"Simulation complete. Output: {p}")

@@ -13,10 +13,13 @@ import streamlit.components.v1 as components
 
 import html
 
-from app.arena import build_arena_html, design_payload
+from app.arena import build_arena_html, design_payload, recycling_plans
+from app.sim import utils as sim_utils
 from app.sim.characters import character_from_report
 
-DATA_DIR = Path(__file__).resolve().parents[1] / "data"
+# Same directory the simulator writes to (app.sim.utils.DATA_DIR).
+DATA_DIR = sim_utils.DATA_DIR
+RECYCLING_PAGE = "pages/5_Recycling.py"
 
 # === PAGE CONFIG & THEME ===
 st.set_page_config(
@@ -220,20 +223,63 @@ st.markdown("""
 st.markdown("<h1>🎮 AI POD AGENT SIMULATION ARENA 🎮</h1>", unsafe_allow_html=True)
 st.markdown("""
 <div style='text-align: center; color: #00ccff; font-size: 14px; margin-bottom: 20px;'>
-⚡ REAL-TIME MULTI-AGENT PRINT-ON-DEMAND MARKETPLACE BATTLE ⚡
+⚡ MULTI-AGENT PRINT-ON-DEMAND SIMULATION · RECORDED-RUN REPLAY ⚡
 </div>
 """, unsafe_allow_html=True)
 
-if not DATA_DIR.exists():
-    st.error("❌ NO DATA DIRECTORY FOUND. INITIALIZING SIMULATION...")
-    st.stop()
 
-files = sorted(DATA_DIR.glob("run_*.json"))
+def _list_runs():
+    return sorted(DATA_DIR.glob("run_*.json")) if DATA_DIR.exists() else []
+
+
+def offline_launch(container, key):
+    """Explicit, button-triggered offline simulation (no Etsy/OpenAI calls,
+    no publishing). Nothing is written unless the button is pressed."""
+    with container.form(f"offline_run_{key}"):
+        st.markdown("**▶ Run an offline simulation**")
+        st.caption("Simulated trends, compliance, pricing and sales; no API calls, no image generation, "
+                   "no publishing. Saves a new data/run_*.json (older runs are kept).")
+        batch = st.number_input("Candidate designs", min_value=4, max_value=60, value=24, step=1,
+                                key=f"batch_{key}")
+        use_seed = st.checkbox("Fixed seed (reproducible)", value=False, key=f"use_seed_{key}")
+        seed = st.number_input("Seed", min_value=0, max_value=1_000_000, value=42, step=1, key=f"seed_{key}")
+        submitted = st.form_submit_button("Run offline simulation")
+    if not submitted:
+        return
+    try:
+        from app.sim.run_simulation import run_once
+
+        with st.spinner("Running the offline agent pipeline..."):
+            path = Path(run_once(batch_size=int(batch), seed=int(seed) if use_seed else None))
+    except Exception as exc:  # noqa: BLE001 - show the operator what failed
+        st.session_state["launch_error"] = f"Offline simulation failed: {type(exc).__name__}: {exc}"
+    else:
+        if path.parent.resolve() != DATA_DIR.resolve() or not path.exists():
+            st.session_state["launch_error"] = (
+                f"Simulation wrote {path} but this dashboard reads {DATA_DIR}; the run cannot be shown.")
+        else:
+            st.session_state["run_select"] = path.name
+            st.session_state["launch_notice"] = f"New run {path.name} saved and selected."
+    st.rerun()
+
+
+if st.session_state.get("launch_error"):
+    st.error(st.session_state.pop("launch_error"))
+if st.session_state.get("launch_notice"):
+    st.success(st.session_state.pop("launch_notice"))
+
+files = _list_runs()
 if not files:
-    st.warning("⚠️ NO SIMULATION RUNS DETECTED. LAUNCH SIMULATION: python -m app.sim.run_simulation")
+    st.warning("⚠️ NO SIMULATION RUNS YET. Start one below (offline, free, nothing is published) or run "
+               "`python -m app.sim.run_simulation` in a terminal.")
+    offline_launch(st, "main")
     st.stop()
 
-selected = st.sidebar.selectbox("📊 SELECT RUN", [f.name for f in files], index=len(files)-1)
+offline_launch(st.sidebar, "sidebar")
+names = [f.name for f in files]
+if st.session_state.get("run_select") not in names:
+    st.session_state["run_select"] = names[-1]
+selected = st.sidebar.selectbox("📊 SELECT RUN", names, key="run_select")
 with open(DATA_DIR / selected, "r", encoding="utf-8") as f:
     payload = json.load(f)
 
@@ -303,19 +349,42 @@ st.markdown(cipher_html, unsafe_allow_html=True)
 # === GAME ARENA ===
 st.markdown("<h2>🏭 THE VAULT: SIMULATION ARENA (REPLAY)</h2>", unsafe_allow_html=True)
 st.caption(
-    "A replay of the selected recorded run: agents carry designs between rooms, rejected images with a "
-    "recycling record go to the Recycling Facility, recorded department transfers are replayed, and Dr. Cypher "
-    "walks to the departments he actually reviewed. Click agents, Dr. Cypher or rooms to inspect them."
+    "A timed replay of the selected recorded run (not live backend work): outcomes, worker assignments, "
+    "transfers and Dr. Cypher's visits come from the run file; timings are animation. Workers carry each design "
+    "between rooms, rejected images with a recycling record go to the Recycling Facility where the recycler's "
+    "recorded plan is shown, and Dr. Cypher tours the departments he reviewed (extra patrols are labelled as "
+    "replay checks). Click agents, Dr. Cypher, rooms or the worker chips to inspect them."
 )
+
+
+def _recycling_store_records():
+    """Read-only view of the global recycling queue (never written here)."""
+    from app.sim.recycling import RECYCLING_FILENAME, RecyclingStore
+
+    try:
+        return RecyclingStore(DATA_DIR / RECYCLING_FILENAME).records
+    except (OSError, ValueError):
+        return []
+
+
+run_plans = recycling_plans(payload.get("recycling"), _recycling_store_records(), selected)
 components.html(
     build_arena_html(
-        design_payload(df, recycling=payload.get("recycling")),
+        design_payload(df, recycling=payload.get("recycling"), team=payload.get("team"),
+                       manager=payload.get("manager")),
         team=payload.get("team"),
         character=cypher.to_dict(),
         run_label=selected,
+        plans=run_plans,
     ),
-    height=980,
+    height=1120,
+    scrolling=True,
 )
+try:
+    st.page_link(RECYCLING_PAGE, label="Open the Recycling Facility: preview images, re-analyse, request reuse or archive",
+                 icon="♻️")
+except Exception:  # noqa: BLE001 - page registry unavailable (e.g. a different entrypoint)
+    st.caption("♻️ Open the **Recycling** page in the sidebar to preview images, re-analyse or decide on reuse.")
 
 st.markdown("---")
 
@@ -385,22 +454,29 @@ agents_info = [
         "progress": 100,
     },
 ]
+_plans = list(run_plans["plans"].values())
+_analysed = sum(1 for p in _plans if p.get("analysis"))
+agents_info.append({
+    "icon": "♻️",
+    "name": "RECYCLER",
+    "role": "Reuse Planner",
+    "stat": (f"{_analysed}/{len(_plans)} unused images planned" if _plans
+             else "no rejected images this run"),
+    "progress": int(_analysed / len(_plans) * 100) if _plans else 0,
+})
 
 # Display agents in a horizontal pipeline
 agents_html = '<div style="display: flex; flex-wrap: wrap; justify-content: center; gap: 5px;">'
 for agent in agents_info:
     progress_pct = agent["progress"]
-    agents_html += f"""
-    <div class="agent-card">
-        <div class="agent-icon">{agent['icon']}</div>
-        <div class="agent-name">{agent['name']}</div>
-        <div class="agent-role">{agent['role']}</div>
-        <div class="progress-bar">
-            <div class="progress-fill" style="width: {progress_pct}%"></div>
-        </div>
-        <div class="agent-stats">{agent['stat']}</div>
-    </div>
-    """
+    # Single line per card: indented/blank lines would turn into Markdown code blocks.
+    agents_html += (
+        f'<div class="agent-card"><div class="agent-icon">{agent["icon"]}</div>'
+        f'<div class="agent-name">{html.escape(agent["name"])}</div>'
+        f'<div class="agent-role">{html.escape(agent["role"])}</div>'
+        f'<div class="progress-bar"><div class="progress-fill" style="width: {progress_pct}%"></div></div>'
+        f'<div class="agent-stats">{html.escape(agent["stat"])}</div></div>'
+    )
 agents_html += '</div>'
 
 st.markdown(agents_html, unsafe_allow_html=True)
@@ -651,12 +727,12 @@ else:
             st.write(design["compliance_notes"] or "No compliance notes recorded.")
             if manager_score.get("coach"):
                 st.info(manager_score["coach"])
-            components = manager_score.get("components", {})
-            if components:
+            score_components = manager_score.get("components", {})
+            if score_components:
                 st.markdown("**Score breakdown**")
                 st.dataframe(
                     pd.DataFrame(
-                        [{"Factor": name.title(), "Score": score} for name, score in components.items()]
+                        [{"Factor": name.title(), "Score": score} for name, score in score_components.items()]
                     ),
                     use_container_width=True,
                     hide_index=True,

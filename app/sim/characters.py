@@ -146,5 +146,8 @@ def character_from_report(manager_report: Optional[Dict]) -> DrCypher:
         cypher.visit("approval", "Scored and decided", greenlight=a.get("greenlight", 0),
                      hold=a.get("hold", 0), block=a.get("block", 0))
     cypher.react(report.get("batch", {}))
+    for visit in cypher.visits:
+        # Not recorded by this run's manager: rebuilt from its decision log.
+        visit["source"] = "reconstructed"
     cypher.return_home()
     return cypher
