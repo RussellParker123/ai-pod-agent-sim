@@ -75,7 +75,9 @@ python -m app.sim.run_simulation --publish-run run_YYYYMMDD_HHMMSS.json --real
 
 Only explicitly approved designs are sent to the marketplace adapter. The
 original run is preserved; publishing writes a separate `published_*.json`
-result file.
+result file. Live publishing is unavailable from a fresh `run_once` execution;
+Etsy failures stop the publish operation rather than being recorded as mock
+listings.
 
 ## Project structure
 

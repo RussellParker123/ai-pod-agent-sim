@@ -80,3 +80,11 @@ def test_publish_reviewed_run_only_lists_approved_designs(tmp_path, monkeypatch)
     published = json.loads((tmp_path / result_path.split("/")[-1]).read_text(encoding="utf-8"))
     assert published["review_status"]["D3"] == "BLOCKED"
     assert [item["design_id"] for item in published["marketplace_listings"]] == ["D1", "D2"]
+
+
+def test_run_once_rejects_unreviewed_real_publication():
+    try:
+        run_simulation.run_once(real=True)
+        assert False, "Expected unreviewed live publishing to fail"
+    except ValueError as exc:
+        assert "--publish-run" in str(exc)

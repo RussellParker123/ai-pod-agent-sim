@@ -63,8 +63,12 @@ class EtsyAdapter(MarketplaceAdapter):
                 "note": "",
             }
         except (EtsyError, ValueError, KeyError) as exc:
-            log.error("Etsy listing failed for %s: %s; falling back to simulation", design.design_id, exc)
-            return self._simulate(design, note=f"fallback: {exc}")
+            log.error(
+                "Etsy listing failed for %s (%s)",
+                design.design_id,
+                type(exc).__name__,
+            )
+            raise EtsyError(f"Etsy listing failed for {design.design_id}") from exc
 
 
 def get_adapter(name: str = "etsy", draft_only: bool = False) -> MarketplaceAdapter:

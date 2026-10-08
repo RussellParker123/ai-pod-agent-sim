@@ -33,6 +33,12 @@ def run_once(
     draft_only: bool = False,
     team: AgentTeam = None,
 ) -> str:
+    if real:
+        raise ValueError(
+            "Live publishing requires a saved run with explicit human review; "
+            "use --publish-run after reviewing it."
+        )
+
     configure_etsy_logging(DATA_DIR / "etsy_api.log")
     etsy_connector = EtsyConnector.from_environment() if etsy_mode else None
     if etsy_connector:
@@ -145,7 +151,11 @@ if __name__ == "__main__":
         action="store_true",
         help="Use read-only Etsy store data when credentials are configured.",
     )
-    parser.add_argument("--real", action="store_true", help="publish approved designs to Etsy (default: simulate)")
+    parser.add_argument(
+        "--real",
+        action="store_true",
+        help="publish a reviewed run to Etsy (requires --publish-run)",
+    )
     parser.add_argument("--draft-only", action="store_true", help="save listings as drafts instead of active")
     parser.add_argument(
         "--publish-run",
@@ -155,6 +165,8 @@ if __name__ == "__main__":
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
 
+    if args.real and not args.publish_run:
+        parser.error("--real requires --publish-run so every design can be reviewed first")
     real = args.real
     if real and not args.yes:
         kind = "DRAFT" if args.draft_only else "ACTIVE"

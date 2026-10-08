@@ -1,6 +1,6 @@
 # Etsy Integration Setup
 
-Simulation is the default. Real Etsy calls only happen with `--real`, after a confirmation prompt (skip with `--yes`).
+Simulation is the default. To publish, first run the simulation, review and approve designs in the Review page, then publish that saved run. Live publication prompts for confirmation (skip with `--yes`).
 
 ## 1. Register an Etsy app
 1. Create/sign in to your Etsy account and open your shop.
@@ -21,13 +21,13 @@ No banking info is needed in this project; Etsy handles payments.
 ## 3. Run
 ```bash
 python -m app.sim.run_simulation                       # simulation only
-python -m app.sim.run_simulation --real --draft-only   # real drafts
-python -m app.sim.run_simulation --real                # real active listings
+python -m app.sim.run_simulation --publish-run run_YYYYMMDD_HHMMSS.json --real --draft-only  # reviewed real drafts
+python -m app.sim.run_simulation --publish-run run_YYYYMMDD_HHMMSS.json --real              # reviewed active listings
 ```
-If an API call fails, that design falls back to a simulated listing.
+Real publishing is rejected unless a saved run is selected. Etsy API failures stop publication and are reported as failures; they are not represented as simulated listings.
 
 ## Security
-- Never commit `.env` (it is in `.gitignore`); never paste keys into code, issues or logs.
+- Never commit `.env` or `.env.local` (both are in `.gitignore`); never paste keys into code, issues or logs. The setup wizard does not print entered credentials.
 - Rotate keys/tokens if exposed. Access tokens expire (~1 hour); refresh with `EtsyClient.refresh_access_token`.
 
 ## Rate limiting

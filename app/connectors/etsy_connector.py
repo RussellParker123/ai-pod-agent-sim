@@ -35,17 +35,18 @@ def configure_etsy_logging(log_path):
 
 def load_dotenv(path=None):
     """Load simple KEY=VALUE entries without overriding existing environment."""
-    env_path = Path(path) if path else Path(__file__).resolve().parents[2] / ".env"
-    if not env_path.is_file():
-        return
-
-    for line in env_path.read_text(encoding="utf-8").splitlines():
-        line = line.strip()
-        if not line or line.startswith("#") or "=" not in line:
+    repo_root = Path(__file__).resolve().parents[2]
+    env_paths = [Path(path)] if path else [repo_root / ".env.local", repo_root / ".env"]
+    for env_path in env_paths:
+        if not env_path.is_file():
             continue
-        key, value = line.split("=", 1)
-        value = value.strip().strip("\"'")
-        os.environ.setdefault(key.strip(), value)
+        for line in env_path.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            key, value = line.split("=", 1)
+            value = value.strip().strip("\"'")
+            os.environ.setdefault(key.strip(), value)
 
 
 class EtsyConnector:

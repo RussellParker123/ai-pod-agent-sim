@@ -9,17 +9,17 @@ Run: `python -m app.setup.etsy_wizard` (or `python app/setup/etsy_wizard.py`).
 4. **Enter credentials**: `ETSY_API_KEY`, `ETSY_API_SECRET`, `ETSY_SHOP_ID`, `ETSY_ACCESS_TOKEN`. Secrets are hidden as you type.
 5. **Validation**: the wizard calls Etsy's shop endpoint to confirm the token works.
 6. **Test listing** (optional): creates a draft titled `TEST: AI Art - <timestamp>`; you may delete it or keep the draft.
-7. **Save**: writes `.env` (or `.env.local`) with owner-only permissions after confirmation.
+7. **Save**: writes `.env` (or `.env.local`) with owner-only permissions after confirmation. Credentials are never printed if saving is declined or fails.
 
 ## Finding your Shop ID
 Call `GET https://openapi.etsy.com/v3/application/users/me` (with your token and `x-api-key`); it returns `shop_id`. 
 
 ## Security
-- Never commit `.env` to Git; the wizard warns if it is not in `.gitignore`.
+- Never commit `.env` or `.env.local` to Git; the wizard warns if the selected file is not ignored.
 - Credentials are masked (first/last 4 characters) when displayed.
 
 ## Troubleshooting
 - **Network error**: check your internet connection.
 - **401/403**: wrong API key or expired token. Access tokens expire after about an hour; use your refresh token (`grant_type=refresh_token` at `https://api.etsy.com/v3/public/oauth/token`) or repeat step 3.
 - **429**: Etsy rate limits requests per second and per day; wait and retry.
-- **Permission denied writing .env**: `chmod u+w .env` or run with appropriate rights, or choose to print credentials instead.
+- **Permission denied writing .env**: `chmod u+w .env` or run with appropriate rights. The wizard will not print the credentials; enter them again in a protected file or environment variables.

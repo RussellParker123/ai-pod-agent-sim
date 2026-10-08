@@ -2,6 +2,7 @@
 import os
 import time
 import logging
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import requests
@@ -33,7 +34,9 @@ class EtsyClient:
         timeout: float = 30.0,
     ):
         if load_dotenv:
-            load_dotenv()
+            repo_root = Path(__file__).resolve().parents[2]
+            load_dotenv(repo_root / ".env.local", override=False)
+            load_dotenv(repo_root / ".env", override=False)
         self.api_key = api_key or os.getenv("ETSY_API_KEY", "")
         self.api_secret = api_secret or os.getenv("ETSY_API_SECRET", "")
         self.shop_id = shop_id or os.getenv("ETSY_SHOP_ID", "")

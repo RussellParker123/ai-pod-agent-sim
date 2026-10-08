@@ -137,10 +137,11 @@ def create_test_listing(creds: dict) -> None:
             console.print(f"  {BAD} Delete failed: {v.explain_response(d)}")
 
 
-def print_credentials(creds: dict) -> None:
-    console.print("\n[bold]Add these to your .env manually:[/bold]")
-    for k, val in creds.items():
-        console.print(f"{k}={val}", highlight=False, markup=False)
+def explain_unsaved_credentials() -> None:
+    console.print(
+        "Credentials were not saved or displayed. Re-enter them in a protected "
+        ".env file or configure them as environment variables."
+    )
 
 
 def save_credentials(creds: dict) -> None:
@@ -149,11 +150,11 @@ def save_credentials(creds: dict) -> None:
     if gi is not True:
         console.print(f"  {WARN} .env is not listed in .gitignore — add it before committing!")
     console.print("  [yellow]Never commit .env to Git.[/yellow]")
-    if not yes_no("Save to a file? (No prints credentials for manual setup)", default=True):
-        print_credentials(creds)
+    if not yes_no("Save to a file? (No keeps credentials hidden)", default=True):
+        explain_unsaved_credentials()
         return
     name = ask("File name [.env] (or .env.local):") or ".env"
-    if Path(name).name != name or not name.startswith(".env"):
+    if Path(name).name != name or name not in (".env", ".env.local"):
         console.print(f"  {BAD} Use .env or .env.local (inside the project folder).")
         name = ".env"
     path = REPO_ROOT / name
@@ -164,7 +165,7 @@ def save_credentials(creds: dict) -> None:
         shown = ", ".join(f"{k}={v.mask(x)}" for k, x in existing.items())
         console.print(f"  {WARN} {name} already has credentials: {shown}")
         if not yes_no("Overwrite them?"):
-            print_credentials(creds)
+            explain_unsaved_credentials()
             return
     try:
         lines = path.read_text(encoding="utf-8").splitlines() if path.exists() else []
@@ -177,7 +178,7 @@ def save_credentials(creds: dict) -> None:
             pass
     except PermissionError:
         console.print(f"  {BAD} Permission denied writing {path}. Try `chmod u+w` or run as administrator.")
-        print_credentials(creds)
+        explain_unsaved_credentials()
         return
     console.print(f"  {OK} Saved to {path}")
 
@@ -212,8 +213,9 @@ def main() -> int:
     except (KeyboardInterrupt, EOFError):
         console.print("\n[yellow]Cancelled. Nothing further was saved.[/yellow]")
         return 130
-    console.print("\n[bold green]✨ Setup Complete![/bold green] You can now run:")
-    console.print("python -m app.sim.run_simulation --real", highlight=False)
+    console.print("\n[bold green]✨ Setup Complete![/bold green] Run a simulation, review it, then publish:")
+    console.print("python -m app.sim.run_simulation", highlight=False)
+    console.print("python -m app.sim.run_simulation --publish-run run_YYYYMMDD_HHMMSS.json --real", highlight=False)
     return 0
 
 

@@ -14,11 +14,14 @@ def test_simulated_default():
     assert r["mode"] == "simulated" and r["listing_id"] == "SIM-D001"
 
 
-def test_real_without_credentials_falls_back(monkeypatch):
+def test_real_without_credentials_fails_closed(monkeypatch):
     for k in ("ETSY_API_KEY", "ETSY_SHOP_ID", "ETSY_ACCESS_TOKEN"):
         monkeypatch.delenv(k, raising=False)
-    r = EtsyAdapter(client=EtsyClient(api_key="", shop_id="", access_token="")).list_design(design(), real=True)
-    assert r["mode"] == "simulated" and r["note"].startswith("fallback")
+    try:
+        EtsyAdapter(client=EtsyClient(api_key="", shop_id="", access_token="")).list_design(design(), real=True)
+        assert False, "Expected live publishing without credentials to fail"
+    except EtsyError as exc:
+        assert "Etsy listing failed" in str(exc)
 
 
 class Resp:
@@ -29,6 +32,16 @@ class Resp:
 
     def json(self):
         return self._b
+
+
+def test_real_api_failure_is_not_reported_as_simulated():
+    client = EtsyClient("k", "s", "1", "t", max_retries=0, backoff_base=0)
+    with patch("requests.request", return_value=Resp(500)):
+        try:
+            EtsyAdapter(client=client).list_design(design(), real=True)
+            assert False, "Expected Etsy API failure to propagate"
+        except EtsyError as exc:
+            assert "Etsy listing failed" in str(exc)
 
 
 def test_backoff_then_success():
