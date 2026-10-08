@@ -26,6 +26,7 @@ from app.live.catalog_map import (
     PRODUCT_PRINTFUL_VARIANT,
     PRODUCT_SHIP_DIMENSIONS,
     PRODUCT_TAXONOMY,
+    PRODUCT_UNIT_COSTS,
 )
 from app.live.gpt_agents import prompt_agent_live, trend_agent_live
 from app.sim.agents import Design, compliance_agent, mockup_agent, pricing_agent
@@ -114,11 +115,6 @@ def list_image_archive() -> List[dict]:
                     }
                 )
     return manifest + orphaned
-
-
-# Mirrors the base_costs used by app.sim.agents.mockup_agent, so a manually
-# staged archive image gets the same real unit economics as a batch-run one.
-PRODUCT_UNIT_COSTS = {"mug": 6.5, "tshirt": 9.0, "tote": 7.0}
 
 
 def stage_archived_image(

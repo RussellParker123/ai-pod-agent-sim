@@ -48,6 +48,19 @@ PRODUCT_PRINTFUL_PRODUCT = {
     "tote": 367,
 }
 
+# Real Printful per-unit blank cost (the "Price" shown on the catalog page
+# for each variant above, e.g. $6.07 for the White Glossy Mug 11oz) — this
+# is what pricing_agent's target-margin math is based off of, so it must
+# track Printful's actual price, not a guess. Verified live against
+# GET /products/variant/{id} on 2026-10-08 (previous placeholders had
+# drifted quite far for tshirt/tote — tote in particular was ~55% under
+# the real cost, which would have priced totes at a loss).
+PRODUCT_UNIT_COSTS = {
+    "mug": 6.07,
+    "tshirt": 11.92,
+    "tote": 15.87,
+}
+
 # Shipping weight/box dimensions for a calculated shipping profile — Etsy
 # requires these on every physical listing that uses a "calculated"
 # (vs. flat-rate) shipping profile. Conservative real-world packaged

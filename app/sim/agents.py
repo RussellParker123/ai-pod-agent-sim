@@ -2,6 +2,8 @@ from dataclasses import dataclass, asdict
 from typing import List, Dict
 import random
 
+from app.live.catalog_map import PRODUCT_UNIT_COSTS
+
 
 @dataclass
 class Design:
@@ -79,8 +81,7 @@ def compliance_agent(designs: List[Design]) -> None:
 def mockup_agent(designs: List[Design], product_types=("mug", "tshirt", "tote")) -> None:
     for d in designs:
         d.product_type = random.choice(product_types)
-        base_costs = {"mug": 6.5, "tshirt": 9.0, "tote": 7.0}
-        d.unit_cost = base_costs[d.product_type]
+        d.unit_cost = PRODUCT_UNIT_COSTS[d.product_type]
 
 
 def pricing_agent(designs: List[Design], target_margin: float = 0.4) -> None:
