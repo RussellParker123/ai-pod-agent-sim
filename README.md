@@ -52,6 +52,12 @@ compliance behavior. Etsy API request logs are written to
 analytics or reasons for delisting, so trend terms are derived from active
 listing tags and inactive listings are used only as similarity references.
 
+Pricing research uses the median USD price of matching products in your own
+active shop listings as a reference, when available. It is not competitor
+research. Suggested prices are the higher of that reference and the price
+needed for a 40% margin over the simulated product cost; this margin does not
+include Etsy fees, shipping, taxes, or other expenses.
+
 3. Run dashboard:
 
 ```bash

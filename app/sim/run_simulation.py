@@ -17,7 +17,7 @@ from app.sim.agents import (
     listing_simulator,
     to_serializable,
 )
-from app.sim.research import research_agent, apply_research
+from app.sim.research import research_agent, apply_research, pricing_research_agent
 from app.sim.marketing import marketing_agent
 from app.sim.manager import ManagerAgent
 from app.sim.utils import DATA_DIR, save_json, timestamp
@@ -75,7 +75,18 @@ def run_once(
         mockup_agent,
         preferred_product_types=research["top_product_types"],
     )
-    team.run_stage("pricing", designs, pricing_agent, target_margin=0.42)
+    pricing_research = pricing_research_agent(etsy_connector=etsy_connector)
+    market_prices = {
+        product: details["median_price"]
+        for product, details in pricing_research["benchmarks"].items()
+    }
+    team.run_stage(
+        "pricing",
+        designs,
+        pricing_agent,
+        target_margin=0.40,
+        market_prices=market_prices,
+    )
     manager.review_pricing(designs)
     if "marketing" in team.workers:
         team.run_stage("marketing", designs, marketing_agent)
@@ -84,6 +95,7 @@ def run_once(
     results = listing_simulator(designs)
     payload = to_serializable(designs, results)
     payload["research"] = research
+    payload["pricing_research"] = pricing_research
     payload["manager"] = manager.report(designs, results)
     payload["team"] = team.report()
 
