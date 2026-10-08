@@ -540,8 +540,11 @@ function tickRoom(key, dt) {
   });
 }
 function fireTransfers() {
+  const waiting = new Set();  // each agent's transfers replay strictly in recorded order
   st.xfer.forEach(e => {
     if (e.fired) return;
+    if (waiting.has(e.agent_id)) return;
+    waiting.add(e.agent_id);
     const ag = st.agents.find(a => a.id === e.agent_id);
     if (!ag || !e.to || !R[e.to] || ag.room === e.to) {
       e.fired = true; e.skipped = true;

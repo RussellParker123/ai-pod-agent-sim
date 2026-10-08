@@ -34,8 +34,13 @@ pip install -r requirements.txt
 2. Run simulation from CLI:
 
 ```bash
-python -m app.sim.run_simulation
+python -m app.sim.run_simulation                       # 24 candidates
+python -m app.sim.run_simulation --batch-size 12 --seed 7   # smaller, reproducible
 ```
+
+Each run is saved as a new `data/run_<timestamp>.json` (a `_2`, `_3`, ...
+suffix is added if two runs start in the same second); older runs are never
+overwritten.
 
 To optionally use read-only Etsy shop data, copy `.env.example` to `.env` and
 provide `ETSY_SHOP_ID`, `ETSY_API_KEY`, `ETSY_API_SECRET`, and an Etsy OAuth
@@ -58,11 +63,36 @@ research. Suggested prices are the higher of that reference and the price
 needed for the configured target margin (42% by default) over the product cost; this margin does not
 include Etsy fees, shipping, taxes, or other expenses.
 
-3. Run dashboard:
+3. Run dashboard (the entrypoint is `app/dashboard.py`; extra pages live in `app/pages/`):
 
 ```bash
 streamlit run app/dashboard.py
 ```
+
+You do not need to run step 2 first. On a fresh checkout with no runs the
+dashboard shows **Start an offline simulation**: choose the number of
+candidates (and optionally a fixed seed) and press **Run offline simulation**.
+Once runs exist the same form is in the sidebar. The form calls the existing
+simulator (`run_once`) only when you press the button - never on page
+reruns - and only in offline mode: no API calls, no paid image generation, no
+publishing. The new run is selected automatically; failures are shown as an
+error and no partial run is selected.
+
+**Updating a running older checkout.** Streamlit does not reliably reload
+changed modules (e.g. `app/arena.py`) in a server that is already running, so
+after updating:
+
+```bash
+git pull                      # or check out the branch/commit you want
+pip install -r requirements.txt
+# stop the running server (Ctrl+C in its terminal), then
+streamlit run app/dashboard.py
+```
+
+and hard-refresh the browser tab (Ctrl+Shift+R). If the header reads
+"RECORDED-RUN REPLAY" and the agent cards include a **RECYCLER** card, you are
+on the updated version. The repository cannot tell which version a hosted
+deployment is running; redeploy it from the updated commit.
 
 ## Team review and publishing
 
@@ -211,19 +241,54 @@ second time.
 
 ## Arena and Office views
 
-The dashboard arena is a **replay** of the selected run (not live backend work).
-A Recycling Facility room below the lower corridor (reached through a central
-shaft) receives rejected images with a recycling record, carried by the worker
-who rejected them. The recycler resolves each one as pending reuse,
-quarantined or unusable. The ops board and status bar count completed, held,
-pending-reuse, quarantined and unusable designs separately, and the replay
-only finishes when all are resolved. Agents are shown in their real
-departments with their IDs: away-from-home agents are pink, placeholder staff
-for rooms without team workers are labelled, and departments without a room
-(marketing) are listed. Recorded transfers are replayed. Dr. Cypher walks from the
-command center to each department he actually reviewed, speaks his recorded
-line, then returns. The Office page shows the roster per department, Dr.
-Cypher's profile and visits, the run's movement events and the transfer controls.
+The dashboard arena is a **replay** of the selected recorded run, not live
+backend work: every outcome (approved, held, blocked, rejected, recycled) and
+every worker assignment comes from the run file, but the timing and walking
+are animation. Live Mode work is never shown as a replay and the replay never
+calls any API.
+
+- **Agents working together.** Each worker has its recorded ID. Designs are
+  given to the worker the run actually assigned them to (round-robin per
+  department, reconstructed from `team.assignments`; if the recorded counts
+  don't match, any worker in that room takes it). Workers carry each design
+  to the next department on its real path, so you see handoffs, the current
+  task/design ID, a progress ring and a handoff log. Departments work in
+  parallel. A room with no worker in a custom team gets a labelled placeholder
+  instead of a stuck queue. Recorded transfers are replayed in order, e.g.
+  a worker loaned to recycling on demand and returning at end of shift.
+- **Resolution.** Every design ends as completed, held, blocked, rejected,
+  pending reuse, quarantined or unusable. The ops board counts each one and the
+  replay only finishes when all are resolved (also for reject-all and empty runs).
+- **Dr. Cypher** walks from the command center to each department he actually
+  reviewed and speaks his recorded line. Visits to departments that no design
+  reached (e.g. pricing in a reject-all run) are **skipped with an explanation**
+  instead of waiting forever. Between visits he patrols busy rooms; those checks
+  are labelled "replay check, not a recorded decision". When all work is
+  resolved he returns to the command center. For older runs without a recorded
+  character his visits are reconstructed from the manager decision log and
+  labelled as such; with no manager report there are no recorded visits.
+- **Recycler and reuse plans.** Rejected designs that already have an image
+  (never concept-only rejections) are carried to the Recycling Facility, where
+  the recycler reviews them. Click the **Recycling Facility** or the
+  **recycler** to see, per image: source image, why it was rejected, review
+  status, the recycler's proposed plan (alternate product/niche, rework or
+  archive/quarantine) with confidence, reasons and references, and provenance.
+  Plans come only from the recorded analysis (the recycling queue entry for
+  this run, else the run's snapshot); otherwise the facility says **Not
+  analyzed yet**. Analysis is metadata cross-referencing - image pixels are not
+  inspected, and `sim://` assets have no pixels at all. Queue records from other
+  runs are counted separately and never attributed to the selected run. The
+  **RECYCLER** agent card summarises "x/y unused images planned", and the link
+  under the arena opens the **Recycling** page for previews, re-analysis,
+  manual reuse requests and quarantine. Reuse still requires fresh quality and
+  compliance gates plus explicit human approval; nothing is auto-published.
+
+The Office page shows the roster per department, Dr. Cypher's profile and
+visits, the run's movement events and the transfer controls.
+
+Limitations: the replay's timing is synthetic (runs record outcomes and
+assignments, not a per-event timeline); stage assignments for runs recorded
+before `team.assignments` existed fall back to whichever worker is free.
 
 ## Project structure
 
@@ -236,6 +301,20 @@ Cypher's profile and visits, the run's movement events and the transfer controls
 - `app/integrations/` real API clients (Etsy, OpenAI, Printful)
 - `app/live/` the real/live pipeline and order fulfillment sync
 - `data/` generated run outputs (gitignored except structure)
+
+## Tests
+
+```bash
+pip install pytest playwright
+playwright install chromium   # optional; a system chromium/chrome is used as fallback
+python -m pytest -q
+```
+
+`tests/test_arena_browser.py` runs the arena JavaScript in headless Chromium
+(animation progress, handoffs, transfers, recycler plans, Dr. Cypher's visits
+and return, escaping, no console errors) and is skipped when Playwright or a
+browser is unavailable. `tests/test_offline_launch.py` drives the dashboard with
+Streamlit's AppTest using a temporary data directory and blocks network access.
 
 ## Notes
 - All design assets are simulated metadata by default.
