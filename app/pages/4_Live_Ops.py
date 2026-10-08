@@ -203,7 +203,10 @@ if not pending:
 else:
     for i, entry in enumerate(pending):
         with st.expander(f"{entry['design_id']} — {entry['niche']} ({entry['product_type']}) — ${entry['price']}"):
-            if entry.get("etsy_image_url"):
+            mockup_uri = entry.get("mockup_image_uri")
+            if mockup_uri and Path(mockup_uri).exists():
+                st.image(mockup_uri, width=300)
+            elif entry.get("etsy_image_url"):
                 st.image(entry["etsy_image_url"], width=300)
             st.write(entry["prompt"])
             concept = (entry.get("quality") or {}).get("concept") or {}

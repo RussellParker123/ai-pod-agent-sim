@@ -183,3 +183,147 @@ def test_tote_listing_copy_uses_confirmed_name(with_marketing):
     assert "One size" in listing["description"]
     assert listing["state"] == "draft"
     assert not design.approved
+
+
+def _printfiles(placements, fill_mode, width=1800, height=2400):
+    return {"result": {
+        "printfiles": [{"printfile_id": 1, "width": width, "height": height, "fill_mode": fill_mode}],
+        "variant_printfiles": [{"variant_id": 4012, "placements": {p: 1 for p in placements}}],
+    }}
+
+
+def test_tshirt_mockup_uses_front_and_fits_square_art(monkeypatch):
+    get = Mock(side_effect=[
+        _printfiles(["label_outside", "back", "front"], "fit"),
+        {"result": {"status": "completed", "mockups": [
+            {"placement": "back", "mockup_url": "https://example.test/back.jpg"},
+            {"placement": "front", "mockup_url": "https://example.test/front.jpg"},
+        ]}},
+    ])
+    post = Mock(return_value={"result": {"task_key": "test-task"}})
+    monkeypatch.setattr(printful_client, "_get", get)
+    monkeypatch.setattr(printful_client, "_post", post)
+    assert printful_client.generate_mockup(71, 4012, "https://example.test/art.png") == "https://example.test/front.jpg"
+    file = post.call_args.args[1]["files"][0]
+    assert file["placement"] == "front"
+    assert file["position"] == {
+        "area_width": 1800, "area_height": 2400, "width": 1800, "height": 1800, "top": 300, "left": 0,
+    }
+
+
+def test_cover_print_area_is_still_filled_edge_to_edge(monkeypatch):
+    get = Mock(side_effect=[
+        _printfiles(["default"], "cover", width=2700, height=1050),
+        {"result": {"status": "completed", "mockups": [{"mockup_url": "https://example.test/mug.jpg"}]}},
+    ])
+    post = Mock(return_value={"result": {"task_key": "test-task"}})
+    monkeypatch.setattr(printful_client, "_get", get)
+    monkeypatch.setattr(printful_client, "_post", post)
+    assert printful_client.generate_mockup(19, 4012, "https://example.test/art.png") == "https://example.test/mug.jpg"
+    assert post.call_args.args[1]["files"][0]["position"] == {
+        "area_width": 2700, "area_height": 1050, "width": 2700, "height": 1050, "top": 0, "left": 0,
+    }
+
+
+def test_mockup_retries_rate_limit_and_waits_for_slow_tasks(monkeypatch):
+    import requests
+
+    limited = requests.HTTPError(response=Mock(status_code=429, headers={"Retry-After": "5"}))
+    post = Mock(side_effect=[limited, {"result": {"task_key": "test-task"}}])
+    get = Mock(side_effect=[
+        _printfiles(["front"], "fit"),
+        *[{"result": {"status": "pending"}}] * 20,
+        {"result": {"status": "completed", "mockups": [{"mockup_url": "https://example.test/tote.jpg"}]}},
+    ])
+    clock = {"now": 0.0}
+    monkeypatch.setattr(printful_client.time, "time", lambda: clock["now"])
+    monkeypatch.setattr(printful_client.time, "sleep", lambda s: clock.__setitem__("now", clock["now"] + s))
+    monkeypatch.setattr(printful_client, "_get", get)
+    monkeypatch.setattr(printful_client, "_post", post)
+    assert printful_client.generate_mockup(367, 10457, "https://example.test/art.png") == "https://example.test/tote.jpg"
+    assert post.call_count == 2
+    assert clock["now"] > 45  # longer than the old 45s cap that dropped apparel/tote mockups
+
+
+def test_mockup_non_rate_limit_error_is_not_retried(monkeypatch):
+    import requests
+
+    post = Mock(side_effect=requests.HTTPError(response=Mock(status_code=400, headers={})))
+    monkeypatch.setattr(printful_client, "_get", Mock(return_value=_printfiles(["front"], "fit")))
+    monkeypatch.setattr(printful_client, "_post", post)
+    assert printful_client.generate_mockup(71, 4012, "https://example.test/art.png") is None
+    assert post.call_count == 1
+
+
+def _stage(tmp_path, monkeypatch, mockup_url):
+    monkeypatch.setattr(pipeline, "DATA_DIR", tmp_path)
+    monkeypatch.setattr(pipeline, "PENDING_APPROVALS_PATH", tmp_path / "pending.json")
+    artwork = tmp_path / "D1.png"
+    artwork.write_bytes(b"artwork")
+    design = Design("D1", "bookish humor", 0.8, product_type="tshirt", image_uri=str(artwork),
+                    prompt="Original artwork", price=27.37)
+    etsy = Mock()
+    etsy.create_draft_listing.return_value = {"listing_id": 5}
+    etsy.upload_listing_image.return_value = {"url_fullxfull": "https://example.test/artwork.png", "listing_image_id": 6}
+    printful = Mock()
+    printful.is_configured.return_value = True
+    printful.generate_mockup.return_value = mockup_url
+    printful.create_sync_product.return_value = {"id": 77}
+    monkeypatch.setattr(pipeline, "etsy_client", etsy)
+    monkeypatch.setattr(pipeline, "printful_client", printful)
+    download = Mock(content=b"mockup")
+    monkeypatch.setattr(pipeline.requests, "get", Mock(return_value=download))
+    shop = {"shop_id": 1, "shipping_profile_id": 2, "readiness_state_id": 3, "return_policy_id": 4}
+    return pipeline._stage_design(design, shop), etsy, printful
+
+
+def test_staging_falls_back_to_flat_art_when_mockup_fails(tmp_path, monkeypatch):
+    entry, etsy, printful = _stage(tmp_path, monkeypatch, None)
+    assert entry["mockup_image_url"] is None and entry["mockup_image_uri"] is None
+    assert entry["etsy_image_url"] == "https://example.test/artwork.png"
+    assert etsy.upload_listing_image.call_count == 1
+    etsy.reorder_listing_image.assert_not_called()
+    assert printful.create_sync_product.call_args.kwargs["preview_image_url"] is None
+
+
+def test_staging_records_local_mockup_even_without_images_dir(tmp_path, monkeypatch):
+    entry, _, _ = _stage(tmp_path, monkeypatch, "https://example.test/mockup.jpg")
+    assert entry["mockup_image_uri"] == str(tmp_path / "images" / "D1_mockup.jpg")
+    assert (tmp_path / "images" / "D1_mockup.jpg").read_bytes() == b"mockup"
+    assert entry["etsy_flat_image_id"] == 6
+
+
+def test_refresh_mockups_backfills_existing_flat_only_listings(tmp_path, monkeypatch):
+    entry, etsy, printful = _stage(tmp_path, monkeypatch, None)
+    del entry["etsy_flat_image_id"]  # entries staged before this field existed
+    done = dict(entry, design_id="D2", mockup_image_url="https://example.test/old.jpg")
+    pipeline._save_pending([entry, done])
+    etsy.reset_mock()
+    etsy.get_listing_images.return_value = [
+        {"listing_image_id": 6, "rank": 1, "url_fullxfull": "https://example.test/artwork.png"},
+    ]
+    printful.generate_mockup.reset_mock()
+    printful.generate_mockup.return_value = "https://example.test/mockup.jpg"
+
+    refreshed = pipeline.refresh_mockups()
+
+    assert [e["design_id"] for e in refreshed] == ["D1"]
+    printful.generate_mockup.assert_called_once_with(71, 4012, "https://example.test/artwork.png")
+    etsy.upload_listing_image.assert_called_once_with(1, 5, str(tmp_path / "images" / "D1_mockup.jpg"))
+    etsy.reorder_listing_image.assert_called_once_with(1, 5, 6, rank=2)
+    printful.set_sync_product_preview.assert_called_once_with(
+        77, "https://example.test/artwork.png", "https://example.test/mockup.jpg"
+    )
+    saved = {e["design_id"]: e for e in pipeline.list_all()}
+    assert saved["D1"]["mockup_image_url"] == "https://example.test/mockup.jpg"
+    assert saved["D2"]["mockup_image_url"] == "https://example.test/old.jpg"
+
+
+def test_set_sync_product_preview_updates_every_sync_variant(monkeypatch):
+    monkeypatch.setattr(printful_client, "_get", Mock(return_value={"result": {"sync_variants": [{"id": 9}]}}))
+    put = Mock(return_value={"result": {"id": 9}})
+    monkeypatch.setattr(printful_client, "_put", put)
+    assert printful_client.set_sync_product_preview(77, "https://a/art.png", "https://a/mock.jpg") == [{"id": 9}]
+    put.assert_called_once_with("/store/variants/9", {"files": [
+        {"type": "default", "url": "https://a/art.png"}, {"type": "preview", "url": "https://a/mock.jpg"},
+    ]})

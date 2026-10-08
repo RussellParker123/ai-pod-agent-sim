@@ -15,7 +15,7 @@ import copy
 import json
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 import requests
 
@@ -498,6 +498,80 @@ def _generate_tags(niche: str, product_type: str) -> List[str]:
     return deduped
 
 
+def _attach_mockup(design_id, product_type, shop_id, listing_id, etsy_image_url, flat_design_image_id):
+    """Best-effort: generate a realistic product photo (design applied to an
+    actual rendered mug/shirt/tote) via Printful's Mockup Generator API and
+    upload it as the primary (rank=1) Etsy photo, so buyers see the real
+    product instead of just the flat printed artwork. The flat design
+    stays in the listing too (bumped to rank=2) and remains the file
+    Printful actually prints from. Returns (temporary Printful mockup URL,
+    local mockup path), or (None, None) if anything fails -- the flat design
+    image is already on the listing, so a failure never breaks staging."""
+    printful_product_id = PRODUCT_PRINTFUL_PRODUCT.get(product_type)
+    variant_id = PRODUCT_PRINTFUL_VARIANT.get(product_type)
+    if not (printful_client.is_configured() and etsy_image_url and printful_product_id and variant_id):
+        return None, None
+    mockup_url = printful_client.generate_mockup(printful_product_id, variant_id, etsy_image_url)
+    if not mockup_url:
+        return None, None
+    mockup_path = DATA_DIR / "images" / f"{design_id}_mockup.jpg"
+    try:
+        resp = requests.get(mockup_url, timeout=30)
+        resp.raise_for_status()
+        mockup_path.parent.mkdir(parents=True, exist_ok=True)
+        mockup_path.write_bytes(resp.content)
+        etsy_client.upload_listing_image(shop_id, listing_id, str(mockup_path))
+        if flat_design_image_id:
+            etsy_client.reorder_listing_image(shop_id, listing_id, flat_design_image_id, rank=2)
+    except Exception:
+        return None, None
+    return mockup_url, str(mockup_path)
+
+
+def refresh_mockups(design_id: Optional[str] = None) -> List[dict]:
+    """Backfills product photos for already-staged listings (pending or
+    live) that only have the flat artwork -- e.g. totes/t-shirts staged
+    before apparel mockups generated reliably. Adds the mockup as the
+    primary Etsy photo, bumps the flat art to rank 2, and sets it as the
+    Printful sync product's preview. Best-effort per entry; entries whose
+    mockup still can't be generated are left untouched. Returns the
+    entries that got a new mockup."""
+    pending = _load_pending()
+    refreshed = []
+    for entry in pending:
+        if design_id is not None and entry.get("design_id") != design_id:
+            continue
+        if entry.get("mockup_image_url") or entry.get("status") not in ("pending_approval", "live"):
+            continue
+        flat_image_id = entry.get("etsy_flat_image_id")
+        if not flat_image_id and printful_client.is_configured():
+            try:
+                images = etsy_client.get_listing_images(entry["etsy_listing_id"])
+                flat = next((i for i in images if i.get("url_fullxfull") == entry.get("etsy_image_url")), None)
+                flat_image_id = (flat or min(images, key=lambda i: i.get("rank", 99))).get("listing_image_id")
+            except Exception:
+                flat_image_id = None
+        mockup_url, mockup_uri = _attach_mockup(
+            entry["design_id"], entry.get("product_type"), entry.get("etsy_shop_id"),
+            entry.get("etsy_listing_id"), entry.get("etsy_image_url"), flat_image_id,
+        )
+        if not mockup_url:
+            continue
+        entry["mockup_image_url"] = mockup_url
+        entry["mockup_image_uri"] = mockup_uri
+        entry["etsy_flat_image_id"] = flat_image_id
+        sync_id = (entry.get("printful_sync_product") or {}).get("id")
+        if sync_id:
+            try:
+                printful_client.set_sync_product_preview(sync_id, entry["etsy_image_url"], mockup_url)
+            except Exception:
+                pass  # Etsy already shows the mockup; the Printful preview is a nice-to-have
+        refreshed.append(entry)
+    if refreshed:
+        _save_pending(pending)
+    return refreshed
+
+
 def _stage_design(design, shop: Dict) -> dict:
     taxonomy_id = PRODUCT_TAXONOMY.get(design.product_type)
     if taxonomy_id is None:
@@ -538,31 +612,9 @@ def _stage_design(design, shop: Dict) -> dict:
         etsy_image_url = image_resp.get("url_fullxfull") or image_resp.get("url_570xN")
         flat_design_image_id = image_resp.get("listing_image_id")
 
-    # Best-effort: generate a realistic product photo (design applied to an
-    # actual rendered mug/shirt/tote) via Printful's Mockup Generator API and
-    # upload it as the primary (rank=1) Etsy photo, so buyers see the real
-    # product instead of just the flat printed artwork. The flat design
-    # stays in the listing too (bumped to rank=2) and remains the file
-    # Printful actually prints from.
-    mockup_image_url = None
-    printful_product_id = PRODUCT_PRINTFUL_PRODUCT.get(design.product_type)
-    variant_id = PRODUCT_PRINTFUL_VARIANT.get(design.product_type)
-    if printful_client.is_configured() and etsy_image_url and printful_product_id and variant_id:
-        mockup_url = printful_client.generate_mockup(printful_product_id, variant_id, etsy_image_url)
-        if mockup_url:
-            mockup_path = DATA_DIR / "images" / f"{design.design_id}_mockup.jpg"
-            try:
-                resp = requests.get(mockup_url, timeout=30)
-                resp.raise_for_status()
-                mockup_path.write_bytes(resp.content)
-                etsy_client.upload_listing_image(shop["shop_id"], listing_id, str(mockup_path))
-                if flat_design_image_id:
-                    etsy_client.reorder_listing_image(
-                        shop["shop_id"], listing_id, flat_design_image_id, rank=2
-                    )
-                mockup_image_url = mockup_url
-            except Exception:
-                pass  # mockup photo is a nice-to-have; the flat design image is already on the listing
+    mockup_image_url, mockup_image_uri = _attach_mockup(
+        design.design_id, design.product_type, shop["shop_id"], listing_id, etsy_image_url, flat_design_image_id
+    )
 
     printful_product = None
     if printful_client.is_configured() and etsy_image_url:
@@ -587,6 +639,8 @@ def _stage_design(design, shop: Dict) -> dict:
         "etsy_shop_id": shop["shop_id"],
         "etsy_image_url": etsy_image_url,
         "mockup_image_url": mockup_image_url,
+        "mockup_image_uri": mockup_image_uri,
+        "etsy_flat_image_id": flat_design_image_id,
         "printful_sync_product": printful_product,
         "status": "pending_approval",
         "trend_score": design.trend_score,
@@ -754,6 +808,12 @@ def main() -> None:
 
     sub.add_parser("list", help="List pending approvals")
 
+    refresh_p = sub.add_parser(
+        "refresh-mockups",
+        help="Add a product mockup photo to existing listings that only show the flat artwork",
+    )
+    refresh_p.add_argument("design_id", nargs="?", default=None)
+
     args = p.parse_args()
     if args.action == "run-batch":
         queued = []
@@ -779,6 +839,9 @@ def main() -> None:
     elif args.action == "list":
         for entry in list_pending():
             print(entry)
+    elif args.action == "refresh-mockups":
+        refreshed = refresh_mockups(args.design_id)
+        print(f"Added mockup photos to {len(refreshed)} listing(s): {[e['design_id'] for e in refreshed]}")
 
 
 if __name__ == "__main__":
