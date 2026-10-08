@@ -200,18 +200,18 @@ pending = pipeline.list_pending()
 if not pending:
     st.info("Nothing pending. Run a live batch above.")
 else:
-    for entry in pending:
+    for i, entry in enumerate(pending):
         with st.expander(f"{entry['design_id']} — {entry['niche']} ({entry['product_type']}) — ${entry['price']}"):
             if entry.get("etsy_image_url"):
                 st.image(entry["etsy_image_url"], width=300)
             st.write(entry["prompt"])
             st.caption(f"Etsy draft listing_id={entry['etsy_listing_id']} — waiting on your review (below Dr. Cypher's auto-publish threshold)")
             col_a, col_r = st.columns(2)
-            if col_a.button("Approve & publish live", key=f"approve_{entry['design_id']}"):
+            if col_a.button("Approve & publish live", key=f"approve_{i}_{entry['design_id']}"):
                 pipeline.approve_and_publish(entry["design_id"])
                 st.success("Published.")
                 st.rerun()
-            if col_r.button("Reject", key=f"reject_{entry['design_id']}"):
+            if col_r.button("Reject", key=f"reject_{i}_{entry['design_id']}"):
                 pipeline.reject(entry["design_id"])
                 st.warning("Rejected.")
                 st.rerun()

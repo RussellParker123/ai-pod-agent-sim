@@ -10,11 +10,13 @@ so the live pipeline keeps working without it.
 """
 from __future__ import annotations
 
+import json
 import random
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import List
 
 from app.integrations import openai_text
+from app.integrations.config import DATA_DIR
 from app.sim.agents import Design, prompt_agent, trend_agent
 
 TREND_SYSTEM_PROMPT = (
@@ -36,6 +38,26 @@ PROMPT_SYSTEM_PROMPT = (
     'Return ONLY valid JSON of this shape: {"prompt": "<the prompt text>"}'
 )
 
+_DESIGN_ID_SEQ_PATH = DATA_DIR / "design_id_seq.json"
+
+
+def _next_design_ids(n: int) -> List[str]:
+    """Allocates n globally-unique design IDs, persisted across runs/batches
+    (data/design_id_seq.json). Every live batch used to start back at D001,
+    so two batches could mint the exact same design_id (e.g. 'D010-v1') —
+    that collided in pending_approvals.json and crashed the Live Ops page
+    with a duplicate Streamlit widget key. This guarantees every ID handed
+    out is unique forever, not just within one batch."""
+    last = 0
+    if _DESIGN_ID_SEQ_PATH.exists():
+        with open(_DESIGN_ID_SEQ_PATH, "r", encoding="utf-8") as f:
+            last = json.load(f).get("last", 0)
+    ids = [f"D{last + i + 1:04}" for i in range(n)]
+    _DESIGN_ID_SEQ_PATH.parent.mkdir(parents=True, exist_ok=True)
+    with open(_DESIGN_ID_SEQ_PATH, "w", encoding="utf-8") as f:
+        json.dump({"last": last + n}, f)
+    return ids
+
 
 def trend_agent_live(niches: List[str], k: int = 24) -> List[Design]:
     """GPT-backed trend research: asks OpenAI to propose k concrete design
@@ -44,7 +66,10 @@ def trend_agent_live(niches: List[str], k: int = 24) -> List[Design]:
     isn't set. The proposed concept text is stashed in Design.prompt as a
     seed for prompt_agent_live() to expand into a full art prompt."""
     if not openai_text.is_configured():
-        return trend_agent(niches=niches, k=k)
+        designs = trend_agent(niches=niches, k=k)
+        for d, new_id in zip(designs, _next_design_ids(len(designs))):
+            d.design_id = new_id
+        return designs
 
     try:
         data = openai_text.chat_json(
@@ -55,8 +80,9 @@ def trend_agent_live(niches: List[str], k: int = 24) -> List[Design]:
         items = data.get("designs", [])[:k]
         if not items:
             raise ValueError("GPT returned no design concepts")
+        ids = _next_design_ids(len(items))
         out = []
-        for i, item in enumerate(items):
+        for new_id, item in zip(ids, items):
             niche = item.get("niche") if item.get("niche") in niches else random.choice(niches)
             try:
                 score = float(item.get("trend_score", 0.6))
@@ -64,7 +90,7 @@ def trend_agent_live(niches: List[str], k: int = 24) -> List[Design]:
                 score = 0.6
             out.append(
                 Design(
-                    design_id=f"D{i + 1:03}",
+                    design_id=new_id,
                     niche=niche,
                     trend_score=round(max(0.0, min(1.0, score)), 3),
                     prompt=str(item.get("concept", "")),
@@ -73,7 +99,10 @@ def trend_agent_live(niches: List[str], k: int = 24) -> List[Design]:
         return out
     except Exception:
         # Any API/parse hiccup: don't block the whole pipeline, fall back.
-        return trend_agent(niches=niches, k=k)
+        designs = trend_agent(niches=niches, k=k)
+        for d, new_id in zip(designs, _next_design_ids(len(designs))):
+            d.design_id = new_id
+        return designs
 
 
 def _write_one_prompt(d: Design) -> None:
