@@ -17,9 +17,16 @@ from datetime import datetime
 from pathlib import Path
 from typing import Dict, List
 
+import requests
+
 from app.integrations import etsy_client, openai_image, openai_text, printful_client
 from app.integrations.config import DATA_DIR
-from app.live.catalog_map import PRODUCT_PRINTFUL_VARIANT, PRODUCT_SHIP_DIMENSIONS, PRODUCT_TAXONOMY
+from app.live.catalog_map import (
+    PRODUCT_PRINTFUL_PRODUCT,
+    PRODUCT_PRINTFUL_VARIANT,
+    PRODUCT_SHIP_DIMENSIONS,
+    PRODUCT_TAXONOMY,
+)
 from app.live.gpt_agents import prompt_agent_live, trend_agent_live
 from app.sim.agents import Design, compliance_agent, mockup_agent, pricing_agent
 from app.sim.manager import ManagerAgent
@@ -479,9 +486,37 @@ def _stage_design(design, shop: Dict) -> dict:
     listing_id = listing["listing_id"]
 
     etsy_image_url = None
+    flat_design_image_id = None
     if design.image_uri and Path(design.image_uri).exists():
         image_resp = etsy_client.upload_listing_image(shop["shop_id"], listing_id, design.image_uri)
         etsy_image_url = image_resp.get("url_fullxfull") or image_resp.get("url_570xN")
+        flat_design_image_id = image_resp.get("listing_image_id")
+
+    # Best-effort: generate a realistic product photo (design applied to an
+    # actual rendered mug/shirt/tote) via Printful's Mockup Generator API and
+    # upload it as the primary (rank=1) Etsy photo, so buyers see the real
+    # product instead of just the flat printed artwork. The flat design
+    # stays in the listing too (bumped to rank=2) and remains the file
+    # Printful actually prints from.
+    mockup_image_url = None
+    printful_product_id = PRODUCT_PRINTFUL_PRODUCT.get(design.product_type)
+    variant_id = PRODUCT_PRINTFUL_VARIANT.get(design.product_type)
+    if printful_client.is_configured() and etsy_image_url and printful_product_id and variant_id:
+        mockup_url = printful_client.generate_mockup(printful_product_id, variant_id, etsy_image_url)
+        if mockup_url:
+            mockup_path = DATA_DIR / "images" / f"{design.design_id}_mockup.jpg"
+            try:
+                resp = requests.get(mockup_url, timeout=30)
+                resp.raise_for_status()
+                mockup_path.write_bytes(resp.content)
+                etsy_client.upload_listing_image(shop["shop_id"], listing_id, str(mockup_path))
+                if flat_design_image_id:
+                    etsy_client.reorder_listing_image(
+                        shop["shop_id"], listing_id, flat_design_image_id, rank=2
+                    )
+                mockup_image_url = mockup_url
+            except Exception:
+                pass  # mockup photo is a nice-to-have; the flat design image is already on the listing
 
     printful_product = None
     if printful_client.is_configured() and etsy_image_url:
@@ -504,6 +539,7 @@ def _stage_design(design, shop: Dict) -> dict:
         "etsy_listing_id": listing_id,
         "etsy_shop_id": shop["shop_id"],
         "etsy_image_url": etsy_image_url,
+        "mockup_image_url": mockup_image_url,
         "printful_sync_product": printful_product,
         "status": "pending_approval",
     }

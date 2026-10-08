@@ -187,6 +187,18 @@ def upload_listing_image(shop_id: int, listing_id: int, image_path: str, rank: i
         )
 
 
+def reorder_listing_image(shop_id: int, listing_id: int, listing_image_id: int, rank: int) -> dict:
+    """Moves an already-uploaded listing image to a new gallery position.
+    Unlike upload_listing_image, this doesn't attach a new file -- Etsy's
+    addListingImage endpoint also accepts an existing listing_image_id to
+    reorder it in place (passing a bare `rank` to a *new* upload does not
+    push other images down; the image to move must be targeted explicitly)."""
+    return _post(
+        f"/shops/{shop_id}/listings/{listing_id}/images",
+        data={"listing_image_id": listing_image_id, "rank": rank},
+    )
+
+
 def publish_listing(shop_id: int, listing_id: int) -> dict:
     """Flips a draft listing to 'active' (publicly visible). This is the
     action that must only ever follow explicit human approval."""

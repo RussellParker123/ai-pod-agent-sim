@@ -35,6 +35,19 @@ PRODUCT_PRINTFUL_VARIANT = {
     "tote": 10457,
 }
 
+# Printful catalog *product* ids (the parent blank each variant above
+# belongs to) — needed for the Mockup Generator API, which operates per
+# product rather than per variant. Verified live against
+# GET /products/variant/{id} on 2026-10-08.
+#   mug    -> 19  = White Glossy Mug
+#   tshirt -> 71  = Bella + Canvas 3001 Unisex Staple T-Shirt
+#   tote   -> 367 = Econscious EC8000 Organic Cotton Tote Bag
+PRODUCT_PRINTFUL_PRODUCT = {
+    "mug": 19,
+    "tshirt": 71,
+    "tote": 367,
+}
+
 # Shipping weight/box dimensions for a calculated shipping profile — Etsy
 # requires these on every physical listing that uses a "calculated"
 # (vs. flat-rate) shipping profile. Conservative real-world packaged

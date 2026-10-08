@@ -10,6 +10,7 @@ silently no-op'ing.
 """
 from __future__ import annotations
 
+import time
 from typing import Dict, List, Optional
 
 import requests
@@ -67,6 +68,77 @@ def create_sync_product(name: str, variant_id: int, image_url: str, retail_price
         ],
     }
     return _post("/store/products", body).get("result", {})
+
+
+def get_variant_printfile(product_id: int, variant_id: int) -> dict:
+    """Returns the print-area dimensions (placement -> printfile_id -> width/
+    height in px) for a given catalog product/variant, needed to position an
+    image correctly when requesting a mockup."""
+    data = _get(f"/mockup-generator/printfiles/{product_id}").get("result", {})
+    printfiles = {p["printfile_id"]: p for p in data.get("printfiles", [])}
+    placements = {"default": {}}
+    for vp in data.get("variant_printfiles", []):
+        if vp["variant_id"] == variant_id:
+            placements = vp.get("placements", {})
+            break
+    resolved = {}
+    for placement, printfile_id in placements.items():
+        pf = printfiles.get(printfile_id, {})
+        resolved[placement] = {"width": pf.get("width"), "height": pf.get("height")}
+    return resolved
+
+
+def generate_mockup(
+    product_id: int,
+    variant_id: int,
+    image_url: str,
+    placement: str = "default",
+    poll_timeout: int = 45,
+) -> Optional[str]:
+    """Generates a realistic product photo (e.g. the design wrapped onto a
+    real mug render) via Printful's Mockup Generator API, so Etsy buyers see
+    the actual product instead of just the flat printed artwork. Returns a
+    temporary (few-hours-lived) image URL for the finished mockup, or None
+    if anything about generation fails -- callers should treat this as
+    best-effort and fall back to the flat design image.
+
+    This is a two-step async API: create a task, then poll for its result.
+    """
+    try:
+        printfiles = get_variant_printfile(product_id, variant_id)
+        area = printfiles.get(placement) or next(iter(printfiles.values()), {})
+        width, height = area.get("width"), area.get("height")
+        file_entry = {"placement": placement, "image_url": image_url}
+        if width and height:
+            file_entry["position"] = {
+                "area_width": width,
+                "area_height": height,
+                "width": width,
+                "height": height,
+                "top": 0,
+                "left": 0,
+            }
+        task = _post(
+            f"/mockup-generator/create-task/{product_id}",
+            {"variant_ids": [variant_id], "format": "jpg", "files": [file_entry]},
+        ).get("result", {})
+        task_key = task.get("task_key")
+        if not task_key:
+            return None
+
+        deadline = time.time() + poll_timeout
+        while time.time() < deadline:
+            result = _get("/mockup-generator/task", {"task_key": task_key}).get("result", {})
+            status = result.get("status")
+            if status == "completed":
+                mockups = result.get("mockups", [])
+                return mockups[0]["mockup_url"] if mockups else None
+            if status == "failed":
+                return None
+            time.sleep(2)
+        return None
+    except Exception:
+        return None
 
 
 def create_order_from_receipt(
