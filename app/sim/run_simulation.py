@@ -18,6 +18,7 @@ from app.sim.agents import (
     to_serializable,
 )
 from app.sim.research import research_agent, apply_research, pricing_research_agent
+from app.sim.marketing import marketing_agent
 from app.sim.manager import ManagerAgent
 from app.sim.utils import DATA_DIR, save_json, timestamp
 from app.sim.team import AgentTeam
@@ -87,6 +88,8 @@ def run_once(
         market_prices=market_prices,
     )
     manager.review_pricing(designs)
+    if "marketing" in team.workers:
+        team.run_stage("marketing", designs, marketing_agent)
     manager.score_and_decide(designs)  # GREENLIGHT / HOLD / BLOCK + batch status
 
     results = listing_simulator(designs)

@@ -48,6 +48,21 @@ for did, s in scores.items():
     })
 df = pd.DataFrame(rows).sort_values("score", ascending=False)
 
+st.subheader("Marketing & search visibility")
+marketing_id = st.selectbox("Review marketing draft for design", df["design_id"].tolist())
+marketing = designs.get(marketing_id, {}).get("marketing") or {}
+if marketing:
+    st.text(marketing["title"])
+    st.text(marketing["description"])
+    st.text("Suggested keywords: " + ", ".join(marketing["keywords"]))
+    st.text("Etsy tags: " + ", ".join(marketing["tags"]))
+    st.text("Image alt text draft: " + marketing["image_alt_text"])
+    for recommendation in marketing["recommendations"]:
+        st.text("- " + recommendation)
+    st.caption(marketing["limitations"])
+else:
+    st.info("No marketing draft: older run, disabled marketing department, or compliance/product details need review.")
+
 
 def final_status(r):
     design = designs.get(r["design_id"], {})

@@ -10,8 +10,9 @@ Python multi-agent simulation for original AI-art print-on-demand workflows (mug
   4. Compliance Agent
   5. Mockup Agent
   6. Pricing Agent
-  7. Listing Agent
-  8. Approval Gate
+  7. Marketing Agent
+  8. Listing Agent
+  9. Approval Gate
 - Produces synthetic marketplace outcomes (views, clicks, conversion, orders, revenue, profit).
 - Visualizes results in a Streamlit dashboard.
 
@@ -82,6 +83,25 @@ python -m app.sim.run_simulation --publish-run run_YYYYMMDD_HHMMSS.json --real
 Only explicitly approved designs are sent to the marketplace adapter. The
 original run is preserved; publishing writes a separate `published_*.json`
 result file.
+
+## Marketing and search visibility
+
+The marketing agent drafts product titles, descriptions, relevant keyword
+phrases, Etsy tags (up to 13, each at most 20 characters), and image alt text
+from each compliance-passed design's niche, product, and style metadata.
+Review these drafts and the SEO action checklist on the Review page before
+approving a design. Approved listings use the draft title, description, and
+tags while preserving the AI-art disclosure. Runs without marketing metadata
+retain the previous listing templates.
+
+Recommendations cover accurate marketplace attributes, product photography,
+and—only for a website you control—crawlability, sitemaps, Product structured
+data, and Google Search Console measurement. Verify product facts and keyword
+relevance before publishing. Alt text is a suggestion, not uploaded automatically.
+These are rule-based drafts, not live keyword-volume research, and cannot
+guarantee indexing or search rankings. Simulated views and sales do not measure
+real SEO performance. The agent does not change approval decisions or publish
+on its own. Custom teams may omit the `marketing` department to disable it.
 
 ## Project structure
 
