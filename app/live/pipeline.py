@@ -413,6 +413,37 @@ def run_live_batch_stream(
     yield {"stage": "complete", "queued": queued}
 
 
+PRODUCT_TAG_SYNONYMS = {
+    "mug": ["coffee mug", "mug gift", "ceramic mug"],
+    "tshirt": ["graphic tee", "t shirt", "unisex shirt"],
+    "tote": ["tote bag", "canvas tote", "reusable bag"],
+}
+
+
+def _generate_tags(niche: str, product_type: str) -> List[str]:
+    """Auto-fills the "Attributes > Tags" field of the Etsy listing form —
+    the one piece of the create-listing UI this pipeline didn't already
+    cover (title/description/category/price/shipping/how-it's-made are all
+    set directly from the design). Etsy allows up to 13 tags, max 20
+    characters each; buyers search almost entirely by these."""
+    niche_words = [w for w in niche.lower().replace("-", " ").split() if w]
+    tags: List[str] = []
+    tags.append(niche.lower()[:20])
+    tags.extend(niche_words)
+    tags.extend(PRODUCT_TAG_SYNONYMS.get(product_type, [product_type]))
+    tags.extend(["gift idea", "unique design", "custom print", "made to order", "trendy gift"])
+    seen = set()
+    deduped = []
+    for t in tags:
+        t = t.strip()[:20]
+        if t and t not in seen:
+            seen.add(t)
+            deduped.append(t)
+        if len(deduped) == 13:
+            break
+    return deduped
+
+
 def _stage_design(design, shop: Dict) -> dict:
     taxonomy_id = PRODUCT_TAXONOMY.get(design.product_type)
     if taxonomy_id is None:
@@ -434,6 +465,7 @@ def _stage_design(design, shop: Dict) -> dict:
             "is_supply": False,
             "item_weight_unit": "oz",
             "item_dimensions_unit": "in",
+            "tags": _generate_tags(design.niche, design.product_type),
             **ship_dims,
         },
     )
