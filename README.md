@@ -63,6 +63,25 @@ include Etsy fees, shipping, taxes, or other expenses.
 streamlit run app/dashboard.py
 ```
 
+Choose **Product for new run** in the dashboard sidebar to see its automatic
+40% margin price, then click **Run simulation**. The selected product is passed
+to the mockup agent, which supplies its cost to the pricing agent before manager
+review and listing simulation. **Auto (research agent)** keeps the research-based
+product selection. Existing saved runs are not changed.
+
+You can also select a product from the CLI:
+
+```bash
+python -m app.sim.run_simulation --product-type tote
+```
+
+With the current simulated costs, the minimum prices are **$10.84 for a mug**
+(cost $6.50), **$11.67 for a tote** (cost $7.00), and **$15.00 for a t-shirt**
+(cost $9.00). Pricing uses `cost / (1 - 0.40)`, rounded **up** to the next cent;
+this is a profit margin, not a 40% markup. Etsy-mode shop price references can
+raise these prices, but never lower them below the margin target. These are
+simulated production costs, not supplier quotes or net profits after expenses.
+
 ## Team review and publishing
 
 Pipeline stages use configurable worker lists in `app/sim/team.py`. The default

@@ -1,4 +1,6 @@
-from app.sim.agents import Design, pricing_agent, prompt_agent
+import pytest
+
+from app.sim.agents import Design, mockup_agent, pricing_agent, prompt_agent
 from app.sim.research import apply_research, pricing_research_agent, research_agent
 
 
@@ -58,3 +60,33 @@ def test_pricing_agent_uses_market_reference_without_undercutting_margin():
     assert designs[0].price == 12
     assert designs[1].price == 10.84
     assert all((d.price - d.unit_cost) / d.price >= 0.4 for d in designs)
+
+
+@pytest.mark.parametrize(
+    "product,cost,price", [("mug", 6.5, 10.84), ("tshirt", 9.0, 15.0), ("tote", 7.0, 11.67)]
+)
+def test_selected_product_automatically_sets_cost_and_price(product, cost, price):
+    design = Design("D1", "coffee culture", 0.8, price=15)
+    mockup_agent(
+        [design], product_types=(product,), preferred_product_types=["mug", "tshirt", "tote"]
+    )
+    pricing_agent([design])
+
+    assert design.product_type == product
+    assert design.unit_cost == cost
+    assert design.price == price
+    assert (design.price - design.unit_cost) / design.price >= 0.4
+
+
+def test_changing_product_recalculates_price():
+    design = Design("D1", "coffee culture", 0.8)
+    for product, price in [("tshirt", 15.0), ("tote", 11.67), ("mug", 10.84)]:
+        mockup_agent([design], product_types=(product,))
+        pricing_agent([design])
+        assert design.price == price
+
+
+@pytest.mark.parametrize("products", [(), ("poster",)])
+def test_mockup_rejects_unsupported_product_selection(products):
+    with pytest.raises(ValueError, match="supported products"):
+        mockup_agent([], product_types=products)

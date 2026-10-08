@@ -12,6 +12,8 @@ import plotly.express as px
 import streamlit.components.v1 as components
 
 from app.arena import build_arena_html, design_payload
+from app.sim.agents import Design, PRODUCT_COSTS, pricing_agent
+from app.sim.run_simulation import run_once
 
 DATA_DIR = Path(__file__).resolve().parents[1] / "data"
 
@@ -221,13 +223,28 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-if not DATA_DIR.exists():
-    st.error("❌ NO DATA DIRECTORY FOUND. INITIALIZING SIMULATION...")
-    st.stop()
+product_type = st.sidebar.selectbox(
+    "Product for new run", [None, *PRODUCT_COSTS],
+    format_func=lambda product: {
+        None: "Auto (research agent)", "mug": "Mug", "tshirt": "T-shirt", "tote": "Tote bag"
+    }[product],
+)
+if product_type:
+    preview = Design(
+        "preview", "", 0, product_type=product_type, unit_cost=PRODUCT_COSTS[product_type]
+    )
+    pricing_agent([preview])
+    st.sidebar.metric("Automatic price (40% margin)", f"${preview.price:.2f}")
+    st.sidebar.caption(f"Simulated unit cost: ${preview.unit_cost:.2f}. Price = cost / 0.60, rounded up.")
+st.sidebar.caption("Pricing excludes marketplace fees, shipping, and taxes. Saved runs stay unchanged.")
+if st.sidebar.button("Run simulation"):
+    with st.spinner("Mockup and pricing agents are preparing your products..."):
+        run_once(product_type=product_type)
+    st.rerun()
 
-files = sorted(DATA_DIR.glob("run_*.json"))
+files = sorted(DATA_DIR.glob("run_*.json")) if DATA_DIR.exists() else []
 if not files:
-    st.warning("⚠️ NO SIMULATION RUNS DETECTED. LAUNCH SIMULATION: python -m app.sim.run_simulation")
+    st.warning("No simulation runs yet. Choose a product and click Run simulation in the sidebar.")
     st.stop()
 
 selected = st.sidebar.selectbox("📊 SELECT RUN", [f.name for f in files], index=len(files)-1)

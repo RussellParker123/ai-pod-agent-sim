@@ -8,6 +8,7 @@ from app.connectors.etsy_connector import (
     configure_etsy_logging,
 )
 from app.sim.agents import (
+    PRODUCT_COSTS,
     trend_agent,
     prompt_agent,
     image_agent,
@@ -32,7 +33,10 @@ def run_once(
     real: bool = False,
     draft_only: bool = False,
     team: AgentTeam = None,
+    product_type: str = None,
 ) -> str:
+    if product_type is not None and product_type not in PRODUCT_COSTS:
+        raise ValueError("product_type must be mug, tshirt, tote, or None")
     configure_etsy_logging(DATA_DIR / "etsy_api.log")
     etsy_connector = EtsyConnector.from_environment() if etsy_mode else None
     if etsy_connector:
@@ -72,6 +76,7 @@ def run_once(
         "mockup",
         designs,
         mockup_agent,
+        product_types=(product_type,) if product_type else tuple(PRODUCT_COSTS),
         preferred_product_types=research["top_product_types"],
     )
     pricing_research = pricing_research_agent(etsy_connector=etsy_connector)
@@ -160,6 +165,11 @@ if __name__ == "__main__":
     parser.add_argument("--real", action="store_true", help="publish approved designs to Etsy (default: simulate)")
     parser.add_argument("--draft-only", action="store_true", help="save listings as drafts instead of active")
     parser.add_argument(
+        "--product-type",
+        choices=tuple(PRODUCT_COSTS),
+        help="select the product for all designs; pricing automatically targets a 40%% margin",
+    )
+    parser.add_argument(
         "--publish-run",
         help="publish a previously reviewed run; requires saved per-design approvals",
     )
@@ -180,5 +190,10 @@ if __name__ == "__main__":
             parser.error("--publish-run requires --real")
         p = publish_reviewed_run(args.publish_run, real=real, draft_only=args.draft_only)
     else:
-        p = run_once(etsy_mode=args.etsy_mode, real=real, draft_only=args.draft_only)
+        p = run_once(
+            etsy_mode=args.etsy_mode,
+            real=real,
+            draft_only=args.draft_only,
+            product_type=args.product_type,
+        )
     print(f"Simulation complete. Output: {p}")

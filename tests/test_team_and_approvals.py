@@ -1,4 +1,7 @@
 import json
+import random
+
+import pytest
 
 from app.sim.agents import Design
 from app.sim.approvals import final_review_status
@@ -80,3 +83,35 @@ def test_publish_reviewed_run_only_lists_approved_designs(tmp_path, monkeypatch)
     published = json.loads((tmp_path / result_path.split("/")[-1]).read_text(encoding="utf-8"))
     assert published["review_status"]["D3"] == "BLOCKED"
     assert [item["design_id"] for item in published["marketplace_listings"]] == ["D1", "D2"]
+
+
+@pytest.mark.parametrize(
+    "product,price", [("mug", 10.84), ("tshirt", 15.0), ("tote", 11.67)]
+)
+def test_run_selected_product_flows_through_agents(tmp_path, monkeypatch, product, price):
+    monkeypatch.setattr(run_simulation, "DATA_DIR", tmp_path)
+    captured = {}
+
+    def save(payload, name):
+        captured.update(payload)
+        return tmp_path / name
+
+    monkeypatch.setattr(run_simulation, "save_json", save)
+    state = random.getstate()
+    try:
+        random.seed(42)
+        run_simulation.run_once(product_type=product)
+    finally:
+        random.setstate(state)
+
+    assert captured["designs"]
+    assert all(d["product_type"] == product and d["price"] == price for d in captured["designs"])
+    assert {"mockup", "pricing"} <= {a["department"] for a in captured["team"]["assignments"]}
+    assert all(
+        (d["price"] - d["unit_cost"]) / d["price"] >= 0.4 for d in captured["designs"]
+    )
+
+
+def test_run_rejects_unsupported_product_before_starting():
+    with pytest.raises(ValueError, match="product_type"):
+        run_simulation.run_once(product_type="poster")

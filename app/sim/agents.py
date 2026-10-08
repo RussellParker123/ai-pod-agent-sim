@@ -7,6 +7,7 @@ import re
 
 
 LOGGER = logging.getLogger(__name__)
+PRODUCT_COSTS = {"mug": 6.5, "tshirt": 9.0, "tote": 7.0}
 
 
 @dataclass
@@ -161,11 +162,12 @@ def mockup_agent(
     product_types=("mug", "tshirt", "tote"),
     preferred_product_types=None,
 ) -> None:
+    if not product_types or any(p not in PRODUCT_COSTS for p in product_types):
+        raise ValueError("product_types must contain supported products: mug, tshirt, tote")
     for d in designs:
         pool = [p for p in (preferred_product_types or []) if p in product_types]
         d.product_type = random.choice(pool or product_types)
-        base_costs = {"mug": 6.5, "tshirt": 9.0, "tote": 7.0}
-        d.unit_cost = base_costs[d.product_type]
+        d.unit_cost = PRODUCT_COSTS[d.product_type]
 
 
 def pricing_agent(
