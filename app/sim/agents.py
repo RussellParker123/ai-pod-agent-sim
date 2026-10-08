@@ -8,6 +8,8 @@ import re
 
 LOGGER = logging.getLogger(__name__)
 
+from app.live.catalog_map import PRODUCT_UNIT_COSTS
+
 
 @dataclass
 class Design:
@@ -165,8 +167,7 @@ def mockup_agent(
     for d in designs:
         pool = [p for p in (preferred_product_types or []) if p in product_types]
         d.product_type = random.choice(pool or product_types)
-        base_costs = {"mug": 6.5, "tshirt": 9.0, "tote": 7.0}
-        d.unit_cost = base_costs[d.product_type]
+        d.unit_cost = PRODUCT_UNIT_COSTS[d.product_type]
 
 
 def pricing_agent(

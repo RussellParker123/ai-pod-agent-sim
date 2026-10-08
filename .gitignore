@@ -152,6 +152,12 @@ activemq-data/
 # Environments
 .env
 .envrc
+
+# Local OAuth tokens / credentials (never commit real secrets)
+.secrets/
+
+# Generated simulation/live-pipeline outputs (run history, configs, art, approvals)
+data/
 .venv
 env/
 venv/

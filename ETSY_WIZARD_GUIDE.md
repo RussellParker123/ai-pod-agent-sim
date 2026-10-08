@@ -1,6 +1,10 @@
 # Etsy Setup Wizard Guide
 
-Run: `python -m app.setup.etsy_wizard` (or `python app/setup/etsy_wizard.py`).
+Run: `python -m app.setup.etsy_wizard --interactive` (or `python app/setup/etsy_wizard.py --interactive`).
+
+Without `--interactive`, the wizard collects simulation settings and saves
+`data/etsy_config.json`. The live pipeline's OAuth flow remains available through
+`--connect-etsy` and `--complete-etsy-auth --redirect-url "<full redirect URL>"`.
 
 ## Steps
 1. **Create an Etsy seller account** at https://www.etsy.com/sell. Etsy requires identity verification and a payout method; this cannot be automated.

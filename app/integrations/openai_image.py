@@ -1,0 +1,90 @@
+"""OpenAI image generation client, used for real AI art in live mode.
+
+Falls back to the simulated placeholder (with a warning) when
+OPENAI_API_KEY isn't set yet, since the user plans to add it later.
+"""
+from __future__ import annotations
+
+import base64
+import warnings
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from pathlib import Path
+from typing import List
+
+import requests
+
+from app.integrations.config import DATA_DIR, OPENAI_API_KEY, NotConfiguredError
+from app.sim.agents import Design
+
+IMAGES_URL = "https://api.openai.com/v1/images/generations"
+MODEL = "gpt-image-1"
+
+
+def is_configured() -> bool:
+    return bool(OPENAI_API_KEY)
+
+
+def generate_image(prompt: str, out_path: Path, size: str = "1024x1024") -> Path:
+    if not OPENAI_API_KEY:
+        raise NotConfiguredError(
+            "OPENAI_API_KEY is not set. Add it to your .env to enable real AI art generation."
+        )
+    resp = requests.post(
+        IMAGES_URL,
+        headers={"Authorization": f"Bearer {OPENAI_API_KEY}"},
+        json={"model": MODEL, "prompt": prompt, "size": size, "n": 1},
+        timeout=120,
+    )
+    resp.raise_for_status()
+    b64_png = resp.json()["data"][0]["b64_json"]
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out_path.write_bytes(base64.b64decode(b64_png))
+    return out_path
+
+
+def image_agent_live(designs: List[Design], max_workers: int = 4) -> None:
+    """Live replacement for app.sim.agents.image_agent: generates a real
+    image per design via OpenAI when configured, otherwise falls back to
+    the simulated stub so the pipeline keeps working without the key.
+
+    Designs are generated concurrently (up to max_workers at once) so a
+    "team" of several designs for the same niche finishes in roughly the
+    time of one call, not one-at-a-time. (Drains image_agent_live_stream();
+    use that directly to react to each image as it lands, e.g. in a UI.)"""
+    for _ in image_agent_live_stream(designs, max_workers=max_workers):
+        pass
+
+
+def image_agent_live_stream(designs: List[Design], max_workers: int = 4):
+    """Same as image_agent_live(), but yields each Design the moment its
+    image finishes (in completion order, not submission order) so a UI can
+    show a live thumbnail the instant an artist agent finishes a piece,
+    instead of waiting for the whole batch."""
+    if not is_configured():
+        warnings.warn(
+            "OPENAI_API_KEY not set — falling back to simulated image URIs. "
+            "Add the key to .env to generate real AI art.",
+            stacklevel=2,
+        )
+        for d in designs:
+            d.image_uri = f"sim://images/{d.design_id}.png"
+            yield d
+        return
+
+    images_dir = DATA_DIR / "images"
+
+    def _one(d: Design) -> Design:
+        out_path = images_dir / f"{d.design_id}.png"
+        generate_image(d.prompt, out_path)
+        d.image_uri = str(out_path)
+        return d
+
+    if len(designs) <= 1:
+        for d in designs:
+            yield _one(d)
+        return
+
+    with ThreadPoolExecutor(max_workers=min(max_workers, len(designs))) as pool:
+        futures = {pool.submit(_one, d): d for d in designs}
+        for future in as_completed(futures):
+            yield future.result()  # re-raises any generation error on the main thread

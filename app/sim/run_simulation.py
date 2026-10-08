@@ -2,12 +2,15 @@ import argparse
 import json
 import logging
 from pathlib import Path
+from typing import List, Optional
 
 from app.connectors.etsy_connector import (
     EtsyConnector,
     configure_etsy_logging,
 )
 from app.sim.agents import (
+    Design,
+    ListingResult,
     trend_agent,
     prompt_agent,
     image_agent,
@@ -20,12 +23,57 @@ from app.sim.agents import (
 from app.sim.research import research_agent, apply_research, pricing_research_agent
 from app.sim.marketing import marketing_agent
 from app.sim.manager import ManagerAgent
-from app.sim.utils import DATA_DIR, save_json, timestamp
+from app.sim.utils import save_json, timestamp, DATA_DIR
 from app.sim.team import AgentTeam
 from app.sim.approvals import final_review_status, load_review_overrides
 
-
 log = logging.getLogger(__name__)
+
+DEFAULT_NICHES = [
+    "cozy autumn",
+    "pet lovers",
+    "minimalist motivation",
+    "retro outdoors",
+    "bookish humor",
+    "coffee culture",
+]
+DEFAULT_PRODUCT_TYPES = ("mug", "tshirt", "tote")
+DEFAULT_MARGIN = 0.42
+
+ETSY_CONFIG_PATH = DATA_DIR / "etsy_config.json"
+
+
+def load_etsy_config() -> dict:
+    if not ETSY_CONFIG_PATH.exists():
+        raise SystemExit(
+            f"--etsy-mode requires {ETSY_CONFIG_PATH} to exist. Run:\n"
+            "    python -m app.setup.etsy_wizard\n"
+            "first to generate it."
+        )
+    with open(ETSY_CONFIG_PATH, "r", encoding="utf-8") as f:
+        return json.load(f)
+
+
+def apply_etsy_fees(designs: List[Design], results: List[ListingResult], fees: dict) -> None:
+    """Deducts Etsy's real fee structure from each result's profit, in place:
+    - listing_fee: charged once per listing that actually went live (approved)
+    - transaction_fee_pct: percent of revenue, charged on sales
+    - payment_fee_pct / payment_fee_flat: payment processing, charged per order
+    """
+    listing_fee = fees.get("listing_fee", 0.0)
+    transaction_fee_pct = fees.get("transaction_fee_pct", 0.0) / 100.0
+    payment_fee_pct = fees.get("payment_fee_pct", 0.0) / 100.0
+    payment_fee_flat = fees.get("payment_fee_flat", 0.0)
+
+    by_id = {d.design_id: d for d in designs}
+    for r in results:
+        design = by_id.get(r.design_id)
+        if not design or not design.approved:
+            continue
+        transaction_fee = r.revenue * transaction_fee_pct
+        payment_fee = (r.revenue * payment_fee_pct) + (r.orders * payment_fee_flat)
+        total_fees = listing_fee + transaction_fee + payment_fee
+        r.profit = round(r.profit - total_fees, 2)
 
 
 def run_once(
@@ -34,6 +82,18 @@ def run_once(
     draft_only: bool = False,
     team: AgentTeam = None,
 ) -> str:
+    niches = DEFAULT_NICHES
+    product_types = DEFAULT_PRODUCT_TYPES
+    target_margin = DEFAULT_MARGIN
+    etsy_config: Optional[dict] = None
+
+    if etsy_mode:
+        if ETSY_CONFIG_PATH.exists():
+            etsy_config = load_etsy_config()
+            niches = etsy_config.get("niches") or niches
+            product_types = tuple(etsy_config.get("product_types") or product_types)
+            target_margin = etsy_config.get("target_margin", target_margin)
+
     configure_etsy_logging(DATA_DIR / "etsy_api.log")
     etsy_connector = EtsyConnector.from_environment() if etsy_mode else None
     if etsy_connector:
@@ -45,14 +105,6 @@ def run_once(
             "Etsy integration unavailable; using mock behavior"
         )
 
-    niches = [
-        "cozy autumn",
-        "pet lovers",
-        "minimalist motivation",
-        "retro outdoors",
-        "bookish humor",
-        "coffee culture",
-    ]
     team = team or AgentTeam()
     manager = ManagerAgent(manager_id=team.manager_id)
 
@@ -73,6 +125,7 @@ def run_once(
         "mockup",
         designs,
         mockup_agent,
+        product_types=product_types,
         preferred_product_types=research["top_product_types"],
     )
     pricing_research = pricing_research_agent(etsy_connector=etsy_connector)
@@ -84,7 +137,7 @@ def run_once(
         "pricing",
         designs,
         pricing_agent,
-        target_margin=0.40,
+        target_margin=target_margin,
         market_prices=market_prices,
     )
     manager.review_pricing(designs)
@@ -93,10 +146,16 @@ def run_once(
     manager.score_and_decide(designs)  # GREENLIGHT / HOLD / BLOCK + batch status
 
     results = listing_simulator(designs)
+    if etsy_mode and etsy_config:
+        apply_etsy_fees(designs, results, etsy_config.get("fees", {}))
+
     payload = to_serializable(designs, results)
     payload["research"] = research
     payload["pricing_research"] = pricing_research
     payload["manager"] = manager.report(designs, results)
+    if etsy_mode:
+        payload["etsy_mode"] = True
+        payload["etsy_config"] = etsy_config
     payload["team"] = team.report()
 
     if real or draft_only:
@@ -113,6 +172,27 @@ def run_once(
 
     path = save_json(payload, f"run_{timestamp()}.json")
     return str(path)
+
+
+def build_arg_parser() -> argparse.ArgumentParser:
+    p = argparse.ArgumentParser(description="Run one AI POD agent simulation batch.")
+    p.add_argument(
+        "--etsy-mode",
+        action="store_true",
+        help=(
+            "Use read-only Etsy store data when credentials are configured, "
+            "plus niches/product types/margin and fees from data/etsy_config.json "
+            "when available."
+        ),
+    )
+    p.add_argument("--real", action="store_true", help="publish approved designs to Etsy (default: simulate)")
+    p.add_argument("--draft-only", action="store_true", help="save listings as drafts instead of active")
+    p.add_argument(
+        "--publish-run",
+        help="publish a previously reviewed run; requires saved per-design approvals",
+    )
+    p.add_argument("--yes", action="store_true", help="skip the confirmation prompt for --real")
+    return p
 
 
 def publish_reviewed_run(
@@ -154,19 +234,7 @@ def publish_reviewed_run(
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Run the AI POD agent simulation.")
-    parser.add_argument(
-        "--etsy-mode",
-        action="store_true",
-        help="Use read-only Etsy store data when credentials are configured.",
-    )
-    parser.add_argument("--real", action="store_true", help="publish approved designs to Etsy (default: simulate)")
-    parser.add_argument("--draft-only", action="store_true", help="save listings as drafts instead of active")
-    parser.add_argument(
-        "--publish-run",
-        help="publish a previously reviewed run; requires saved per-design approvals",
-    )
-    parser.add_argument("--yes", action="store_true", help="skip the confirmation prompt for --real")
+    parser = build_arg_parser()
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
 
