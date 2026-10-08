@@ -45,6 +45,56 @@ def _post(path: str, json_body: dict) -> dict:
     return resp.json()
 
 
+def _post_with_retry(path: str, json_body: dict, max_retries: int = 3) -> dict:
+    """Like _post, but retries on 429 (Printful's mockup-generator endpoint
+    in particular has an aggressive rate limit -- a few requests in quick
+    succession, e.g. refreshing several designs in a row, reliably triggers
+    one) with a short backoff instead of failing the whole call outright."""
+    for attempt in range(max_retries + 1):
+        resp = requests.post(f"{BASE_URL}{path}", headers=_headers(), json=json_body, timeout=30)
+        if resp.status_code == 429 and attempt < max_retries:
+            time.sleep(10 * (attempt + 1))
+            continue
+        resp.raise_for_status()
+        return resp.json()
+    return {}
+
+
+def _put(path: str, json_body: dict) -> dict:
+    resp = requests.put(f"{BASE_URL}{path}", headers=_headers(), json=json_body, timeout=30)
+    resp.raise_for_status()
+    return resp.json()
+
+
+def get_sync_product(sync_product_id: int) -> dict:
+    """Returns {"sync_product": {...}, "sync_variants": [...]} for a given
+    sync product id (the id stored locally in pending_approvals.json)."""
+    return _get(f"/sync/products/{sync_product_id}").get("result", {})
+
+
+def set_sync_variant_files(sync_variant_id: int, default_url: str, preview_url: Optional[str] = None) -> dict:
+    """Re-sets a sync variant's files. IMPORTANT: PUT /sync/variant/{id}
+    *replaces* the entire files array rather than merging it, so this
+    always re-sends the "default" (print) file alongside the "preview"
+    (product photo) file -- sending the preview alone would silently wipe
+    out the print file Printful actually prints from.
+
+    Note: Printful's API does not appear to durably honor an externally
+    supplied "preview" file as the sync product's visible thumbnail (it
+    gets accepted, processed, but ends up with visible=False and doesn't
+    update the product-level thumbnail_url) -- this is a known Printful
+    platform limitation when integrating via the Ecommerce Platform Sync
+    API rather than their embedded designer. The buyer-facing photo that
+    actually matters is the one uploaded directly to the Etsy listing
+    gallery (see etsy_client.upload_listing_image); this call is kept as a
+    best-effort mirror so Printful's own dashboard has *some* reference to
+    the real product photo, even if it won't show as the primary thumbnail."""
+    files = [{"type": "default", "url": default_url}]
+    if preview_url:
+        files.append({"type": "preview", "url": preview_url, "visible": True})
+    return _put(f"/sync/variant/{sync_variant_id}", {"files": files}).get("result", {})
+
+
 def list_catalog_products(category_id: Optional[int] = None) -> List[dict]:
     params = {"category_id": category_id} if category_id else None
     return _get("/products", params=params).get("result", [])
@@ -104,7 +154,7 @@ def generate_mockup(
     product_id: int,
     variant_id: int,
     image_url: str,
-    placement: str = "default",
+    placement: Optional[str] = None,
     poll_timeout: int = 45,
 ) -> Optional[str]:
     """Generates a realistic product photo (e.g. the design wrapped onto a
@@ -114,13 +164,27 @@ def generate_mockup(
     if anything about generation fails -- callers should treat this as
     best-effort and fall back to the flat design image.
 
+    `placement` defaults to whatever this product's printfiles report
+    (e.g. mugs only have "default"; totes/t-shirts have "front"/"back"/etc
+    instead -- there's no "default" placement for those at all). Pass an
+    explicit placement to override. This must match the *resolved* key sent
+    to Printful's task-create call -- previously this always sent the
+    literal placement param even when the printfile lookup fell back to a
+    different key, which silently failed mockup generation for every
+    product type except mugs (where the keys happened to coincide).
+
     This is a two-step async API: create a task, then poll for its result.
     """
     try:
         printfiles = get_variant_printfile(product_id, variant_id)
-        area = printfiles.get(placement) or next(iter(printfiles.values()), {})
+        if not printfiles:
+            return None
+        resolved_placement = placement if placement in printfiles else next(iter(printfiles), None)
+        if not resolved_placement:
+            return None
+        area = printfiles[resolved_placement]
         width, height = area.get("width"), area.get("height")
-        file_entry = {"placement": placement, "image_url": image_url}
+        file_entry = {"placement": resolved_placement, "image_url": image_url}
         if width and height:
             file_entry["position"] = {
                 "area_width": width,
@@ -130,7 +194,7 @@ def generate_mockup(
                 "top": 0,
                 "left": 0,
             }
-        task = _post(
+        task = _post_with_retry(
             f"/mockup-generator/create-task/{product_id}",
             {"variant_ids": [variant_id], "format": "jpg", "files": [file_entry]},
         ).get("result", {})

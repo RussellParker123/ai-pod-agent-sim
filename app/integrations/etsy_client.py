@@ -295,6 +295,15 @@ def upload_listing_image(shop_id: int, listing_id: int, image_path: str, rank: i
         )
 
 
+def get_listing_images(listing_id: int) -> List[dict]:
+    """Returns the current gallery images for a listing, in whatever rank
+    order Etsy has them. Note: unlike most of this client's calls, this
+    deliberately omits the /shops/{shop_id} prefix -- Etsy's API 404s a
+    single-listing (or its images) lookup under the shop-scoped path;
+    the shop prefix is only valid for listing/image *writes* here."""
+    return _get(f"/listings/{listing_id}/images").get("results", [])
+
+
 def reorder_listing_image(shop_id: int, listing_id: int, listing_image_id: int, rank: int) -> dict:
     """Moves an already-uploaded listing image to a new gallery position.
     Unlike upload_listing_image, this doesn't attach a new file -- Etsy's

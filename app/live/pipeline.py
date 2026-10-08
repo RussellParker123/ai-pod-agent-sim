@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import time
 from dataclasses import replace
 from datetime import datetime
 from pathlib import Path
@@ -579,6 +580,105 @@ def list_all() -> List[dict]:
     return _load_pending()
 
 
+def refresh_mockups(statuses: tuple = ("live",), force: bool = False) -> List[dict]:
+    """Retroactively generates + uploads a realistic product-photo mockup
+    for any existing design whose Etsy listing doesn't already have one.
+
+    This exists because _stage_design() already does this for *new*
+    designs, but several earlier designs (particularly totes/t-shirts, and
+    at least one mug) ended up with only the flat print artwork on their
+    Etsy listing -- generate_mockup() failing silently is swallowed as
+    "nice to have" there. Pass force=True to regenerate even designs that
+    already appear to have one (e.g. to replace a stale mockup).
+
+    Note: this also best-effort mirrors the photo onto Printful's own sync
+    variant "preview" file, but that's cosmetic only -- Printful's API does
+    not durably honor an externally supplied preview as the product's
+    visible thumbnail (see set_sync_variant_files docstring). The Etsy
+    listing photo (what this function primarily fixes) is what buyers
+    actually see and is the one that matters."""
+    results: List[dict] = []
+    entries = _load_pending()
+    changed = False
+    first = True
+
+    for entry in entries:
+        design_id = entry.get("design_id")
+        if entry.get("status") not in statuses:
+            continue
+
+        listing_id = entry.get("etsy_listing_id")
+        shop_id = entry.get("etsy_shop_id")
+        etsy_image_url = entry.get("etsy_image_url")
+        product_type = entry.get("product_type")
+        if not (listing_id and shop_id and etsy_image_url and product_type):
+            results.append({"design_id": design_id, "status": "skipped", "reason": "missing required fields"})
+            continue
+
+        try:
+            images = etsy_client.get_listing_images(listing_id)
+        except Exception as exc:
+            results.append({"design_id": design_id, "status": "error", "reason": f"could not read Etsy images: {exc}"})
+            continue
+
+        if not force and (len(images) >= 2 or entry.get("mockup_image_url")):
+            results.append({"design_id": design_id, "status": "skipped", "reason": "already has a mockup photo"})
+            continue
+
+        printful_product_id = PRODUCT_PRINTFUL_PRODUCT.get(product_type)
+        variant_id = PRODUCT_PRINTFUL_VARIANT.get(product_type)
+        if not (printful_product_id and variant_id):
+            results.append(
+                {"design_id": design_id, "status": "skipped", "reason": f"no Printful mapping for product_type={product_type!r}"}
+            )
+            continue
+
+        if not first:
+            time.sleep(8)  # Printful's mockup-generator endpoint rate-limits bursts of requests
+        first = False
+
+        try:
+            mockup_url = printful_client.generate_mockup(printful_product_id, variant_id, etsy_image_url)
+        except Exception as exc:
+            results.append({"design_id": design_id, "status": "error", "reason": f"mockup generation failed: {exc}"})
+            continue
+        if not mockup_url:
+            results.append({"design_id": design_id, "status": "error", "reason": "mockup generation returned no URL"})
+            continue
+
+        try:
+            mockup_path = DATA_DIR / "images" / f"{design_id}_mockup.jpg"
+            mockup_path.parent.mkdir(parents=True, exist_ok=True)
+            resp = requests.get(mockup_url, timeout=30)
+            resp.raise_for_status()
+            mockup_path.write_bytes(resp.content)
+            etsy_client.upload_listing_image(shop_id, listing_id, str(mockup_path))
+            flat_design_image_id = next((img.get("listing_image_id") for img in images if img.get("rank") == 1), None)
+            if flat_design_image_id:
+                etsy_client.reorder_listing_image(shop_id, listing_id, flat_design_image_id, rank=2)
+        except Exception as exc:
+            results.append({"design_id": design_id, "status": "error", "reason": f"Etsy image upload failed: {exc}"})
+            continue
+
+        entry["mockup_image_url"] = mockup_url
+        changed = True
+
+        sync_product_id = (entry.get("printful_sync_product") or {}).get("id")
+        if sync_product_id:
+            try:
+                detail = printful_client.get_sync_product(sync_product_id)
+                for sv in detail.get("sync_variants", []):
+                    printful_client.set_sync_variant_files(sv["id"], etsy_image_url, mockup_url)
+            except Exception:
+                pass  # cosmetic-only; the Etsy listing photo above is what buyers actually see
+
+        results.append({"design_id": design_id, "status": "fixed", "mockup_image_url": mockup_url})
+
+    if changed:
+        _save_pending(entries)
+    return results
+
+
 def main() -> None:
     p = argparse.ArgumentParser(description="Live pipeline: real design -> Etsy draft + Printful mockup.")
     sub = p.add_subparsers(dest="action", required=True)
@@ -607,6 +707,19 @@ def main() -> None:
 
     sub.add_parser("list", help="List pending approvals")
 
+    refresh_p = sub.add_parser(
+        "refresh-mockups", help="Retroactively add missing product-photo mockups to live Etsy listings"
+    )
+    refresh_p.add_argument(
+        "--force", action="store_true", help="Regenerate even for designs that already appear to have a mockup photo"
+    )
+    refresh_p.add_argument(
+        "--status",
+        action="append",
+        help="Only refresh entries with this status (repeatable; default: live)",
+    )
+
+
     args = p.parse_args()
     if args.action == "run-batch":
         queued = []
@@ -632,6 +745,14 @@ def main() -> None:
     elif args.action == "list":
         for entry in list_pending():
             print(entry)
+    elif args.action == "refresh-mockups":
+        statuses = tuple(args.status) if args.status else ("live",)
+        results = refresh_mockups(statuses=statuses, force=args.force)
+        for r in results:
+            detail = r.get("mockup_image_url") or r.get("reason", "")
+            print(f"[{r['status']:>8}] {r['design_id']} — {detail}")
+        fixed = sum(1 for r in results if r["status"] == "fixed")
+        print(f"Fixed {fixed}/{len(results)} design(s).")
 
 
 if __name__ == "__main__":
