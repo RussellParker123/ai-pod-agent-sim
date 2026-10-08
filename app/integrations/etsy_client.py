@@ -11,17 +11,19 @@ from typing import Dict, List, Optional
 
 import requests
 
-from app.integrations.config import ETSY_API_KEY, NotConfiguredError
+from app.integrations.config import ETSY_API_KEY, ETSY_SHARED_SECRET, NotConfiguredError
 from app.integrations import etsy_auth
 
 BASE_URL = "https://openapi.etsy.com/v3/application"
 
 
 def _headers() -> Dict[str, str]:
-    if not ETSY_API_KEY:
-        raise NotConfiguredError("ETSY_API_KEY is not set.")
+    if not ETSY_API_KEY or not ETSY_SHARED_SECRET:
+        raise NotConfiguredError("ETSY_API_KEY and ETSY_SHARED_SECRET must both be set.")
     return {
-        "x-api-key": ETSY_API_KEY,
+        # As of Feb 2026, Etsy requires "keystring:shared_secret" in x-api-key
+        # (the keystring alone is no longer accepted).
+        "x-api-key": f"{ETSY_API_KEY}:{ETSY_SHARED_SECRET}",
         "Authorization": f"Bearer {etsy_auth.get_valid_access_token()}",
     }
 
@@ -46,8 +48,18 @@ def _put(path: str, json_body: Optional[dict] = None) -> dict:
 
 
 def get_me() -> dict:
-    """Returns the authenticated Etsy user (includes user_id and shop_id)."""
-    return _get("/users/me")
+    """Returns the authenticated Etsy user's id and their shop.
+
+    Etsy's token response doesn't include user_id, and `/users/me` requires a
+    `profile_r` scope we don't request (we only need shop/listing/transaction
+    scopes). Instead, the user_id is parsed from the access token itself
+    (Etsy formats it as "<user_id>.<token>"), and the shop is looked up via
+    `/users/{user_id}/shops`, which only needs the `shops_r` scope we have.
+    """
+    access_token = etsy_auth.get_valid_access_token()
+    user_id = access_token.split(".", 1)[0]
+    shop = _get(f"/users/{user_id}/shops")
+    return {"user_id": int(user_id), "shop_id": shop.get("shop_id"), "shop": shop}
 
 
 def get_shop(shop_id: int) -> dict:
