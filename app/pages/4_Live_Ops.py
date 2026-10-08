@@ -6,9 +6,11 @@ Every action that spends money or goes public requires an explicit button
 click here.
 """
 import sys
+import time
 from pathlib import Path
 
 import streamlit as st
+import streamlit.components.v1 as components
 
 # Streamlit's multipage runner only puts the main script's directory (app/)
 # on sys.path, not the repo root — so the "app" package itself isn't
@@ -36,18 +38,99 @@ if not etsy_auth.is_connected():
     )
     st.stop()
 
+# --- Cyberpunk ops console --------------------------------------------------
+# Same agents as the simulation's "Office" page (app/sim/agents.py,
+# app/sim/manager.py), driven live by app.live.pipeline.run_live_batch_stream()
+# — the only differences from simulation are real OpenAI art generation and
+# two extra real-world stages (deploying to Etsy, syncing to Printful).
+STAGE_NODES = [
+    ("etsy_connect", "📡", "ETSY UPLINK"),
+    ("trend", "📈", "TREND SCANNER"),
+    ("prompt", "⌨️", "PROMPT FORGE"),
+    ("image", "🖼️", "ART SYNTH // OPENAI"),
+    ("compliance", "🛡️", "COMPLIANCE DAEMON"),
+    ("mockup", "🧵", "MOCKUP RENDER"),
+    ("pricing", "💠", "PRICE CORE"),
+    ("manager", "🧠", "MANAGER AI"),
+    ("etsy", "🛰️", "ETSY DEPLOY"),
+    ("printful", "🏭", "PRINTFUL FAB LINK"),
+]
+
+CYBER_CSS = """
+<style>
+  .cyber-wrap{background:#05060a;border:1px solid #1d2a33;border-radius:10px;padding:16px;
+    font-family:'Courier New',monospace;
+    background-image:
+      linear-gradient(rgba(0,255,242,.04) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(0,255,242,.04) 1px, transparent 1px);
+    background-size:24px 24px;}
+  .cyber-title{color:#00fff2;letter-spacing:3px;font-size:13px;margin-bottom:10px;
+    text-shadow:0 0 6px #00fff2aa;}
+  .cyber-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:12px;}
+  .node{border:1px solid #2a3b44;border-radius:8px;padding:10px 6px;text-align:center;
+    background:rgba(10,14,20,.8);transition:all .25s;}
+  .node .icon{font-size:22px;}
+  .node .label{font-size:10px;color:#6fa3ad;letter-spacing:1px;margin-top:4px;}
+  .node .dot{display:inline-block;width:7px;height:7px;border-radius:50%;margin-top:6px;background:#2a3b44;}
+  .node.active{border-color:#ff2bd6;box-shadow:0 0 14px 2px #ff2bd699;animation:pulse 0.9s infinite;}
+  .node.active .label{color:#ff6bf0;}
+  .node.active .dot{background:#ff2bd6;box-shadow:0 0 8px 2px #ff2bd6;}
+  .node.done{border-color:#00ff8c;}
+  .node.done .label{color:#5effc0;}
+  .node.done .dot{background:#00ff8c;box-shadow:0 0 6px 1px #00ff8c;}
+  @keyframes pulse{0%,100%{transform:scale(1)}50%{transform:scale(1.04)}}
+  .term{background:#000;border:1px solid #1d2a33;border-radius:6px;padding:8px 10px;height:150px;
+    overflow-y:auto;font-size:12px;color:#00ff8c;}
+  .term .line{opacity:.9;}
+  .term .line.active{color:#ff6bf0;}
+</style>
+"""
+
+
+def _cyber_html(stage_state: dict, log_lines: list) -> str:
+    nodes = ""
+    for key, icon, label in STAGE_NODES:
+        cls = "node " + stage_state.get(key, "idle")
+        nodes += f'<div class="{cls}"><div class="icon">{icon}</div><div class="label">{label}</div><div class="dot"></div></div>'
+    log_html = "".join(f'<div class="line">{line}</div>' for line in log_lines) or '<div class="line">&gt; standing by...</div>'
+    return (
+        CYBER_CSS
+        + '<div class="cyber-wrap">'
+        + '<div class="cyber-title">⚡ NEURALARTTREASURES // LIVE OPS CONSOLE ⚡</div>'
+        + f'<div class="cyber-grid">{nodes}</div>'
+        + f'<div class="term">{log_html}</div>'
+        + "</div>"
+    )
+
+
 st.markdown("---")
-st.subheader("Generate a new live batch")
+st.subheader("Live Agent Pipeline")
 k = st.number_input("How many designs to queue", min_value=1, max_value=20, value=6)
-if st.button("Run live batch (creates Etsy DRAFT listings, not public)"):
-    with st.spinner("Generating designs, creating draft listings..."):
-        try:
-            queued = pipeline.run_live_batch(k=int(k))
-            st.success(f"Queued {len(queued)} design(s) for approval.")
-        except NotConfiguredError as e:
-            st.error(str(e))
-        except Exception as e:  # noqa: BLE001 - surface any live-pipeline error to the operator
-            st.error(f"Live batch failed: {e}")
+run_clicked = st.button("▶ Run live batch (creates real Etsy DRAFT listings, not public)")
+
+console_slot = st.empty()
+stage_state = {key: "idle" for key, _, _ in STAGE_NODES}
+log_lines: list = []
+with console_slot:
+    components.html(_cyber_html(stage_state, log_lines), height=280)
+
+if run_clicked:
+    try:
+        queued = []
+        for event in pipeline.run_live_batch_stream(k=int(k)):
+            if event["stage"] == "complete":
+                queued = event["queued"]
+                continue
+            stage_state[event["stage"]] = event["status"]
+            log_lines.append(f"&gt; [{event['stage']}] {event['message']}")
+            with console_slot:
+                components.html(_cyber_html(stage_state, log_lines[-10:]), height=280)
+            time.sleep(0.35)  # just pacing for readability — every event above is real work already done
+        st.success(f"Queued {len(queued)} design(s) for approval.")
+    except NotConfiguredError as e:
+        st.error(str(e))
+    except Exception as e:  # noqa: BLE001 - surface any live-pipeline error to the operator
+        st.error(f"Live batch failed: {e}")
 
 st.markdown("---")
 st.subheader("Pending approvals")

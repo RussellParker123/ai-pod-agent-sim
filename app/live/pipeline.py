@@ -50,29 +50,126 @@ def _get_shop_context() -> Dict:
 def run_live_batch(k: int = 6) -> List[dict]:
     """Generates up to k new greenlit designs, creates Etsy draft listings +
     Printful mockups for each, and appends them to the pending-approval queue.
-    Returns the newly queued entries."""
+    Returns the newly queued entries. (Drains run_live_batch_stream(); use
+    that directly for step-by-step progress, e.g. in a live UI.)"""
+    queued: List[dict] = []
+    for event in run_live_batch_stream(k):
+        if event["stage"] == "complete":
+            queued = event["queued"]
+    return queued
+
+
+def run_live_batch_stream(k: int = 6):
+    """Same pipeline as run_live_batch(), but yields a progress event after
+    each agent stage completes so a UI can show the real agents working
+    live, stage by stage, instead of just a final result. Every stage here
+    is the *same* agent function used by the simulation (app/sim/agents.py,
+    app/sim/manager.py) — only the image stage swaps in real OpenAI
+    generation, and two new stages (etsy, printful) do real API calls that
+    don't exist in pure simulation mode.
+
+    Yields dicts: {"stage": str, "status": "active"|"done", "message": str,
+    "count": Optional[int]}. The final event is
+    {"stage": "complete", "queued": [...]}.
+    """
     config = load_etsy_config()
+
+    yield {"stage": "etsy_connect", "status": "active", "message": "Connecting to your Etsy shop..."}
     shop = _get_shop_context()
+    yield {
+        "stage": "etsy_connect",
+        "status": "done",
+        "message": f"Connected to shop_id={shop['shop_id']}.",
+        "count": None,
+    }
 
     manager = ManagerAgent()
+
+    yield {"stage": "trend", "status": "active", "message": f"Scouting {k * 4} candidate designs across your niches..."}
     designs = trend_agent(niches=config["niches"], k=k * 4)
     designs = manager.review_trends(designs)
+    yield {
+        "stage": "trend",
+        "status": "done",
+        "message": f"Manager kept {len(designs)} trending design(s).",
+        "count": len(designs),
+    }
+
+    yield {"stage": "prompt", "status": "active", "message": "Writing original, trademark-safe prompts..."}
     prompt_agent(designs)
+    yield {"stage": "prompt", "status": "done", "message": f"Wrote {len(designs)} prompt(s).", "count": len(designs)}
+
+    if openai_image.is_configured():
+        yield {"stage": "image", "status": "active", "message": "Generating real AI art via OpenAI..."}
+    else:
+        yield {
+            "stage": "image",
+            "status": "active",
+            "message": "OPENAI_API_KEY not set — falling back to simulated image URIs.",
+        }
     openai_image.image_agent_live(designs)
+    yield {"stage": "image", "status": "done", "message": f"Generated {len(designs)} image(s).", "count": len(designs)}
+
+    yield {"stage": "compliance", "status": "active", "message": "Checking for trademark/brand similarity risk..."}
     compliance_agent(designs)
     manager.review_compliance(designs, recheck=compliance_agent)
+    passed = sum(1 for d in designs if d.compliance_status == "pass")
+    yield {
+        "stage": "compliance",
+        "status": "done",
+        "message": f"{passed}/{len(designs)} passed compliance.",
+        "count": passed,
+    }
+
+    yield {"stage": "mockup", "status": "active", "message": "Assigning product mockups (mug/tshirt/tote)..."}
     mockup_agent(designs, product_types=tuple(config["product_types"]))
+    yield {"stage": "mockup", "status": "done", "message": f"Mocked up {len(designs)} product(s).", "count": len(designs)}
+
+    yield {"stage": "pricing", "status": "active", "message": "Pricing for target margin..."}
     pricing_agent(designs, target_margin=config["target_margin"])
     manager.review_pricing(designs)
-    manager.score_and_decide(designs)
+    yield {"stage": "pricing", "status": "done", "message": f"Priced {len(designs)} design(s).", "count": len(designs)}
 
+    yield {"stage": "manager", "status": "active", "message": "Manager scoring and making the greenlight call..."}
+    manager.score_and_decide(designs)
     greenlit = [d for d in designs if d.approved][:k]
-    queued = [_stage_design(design, shop) for design in greenlit]
+    yield {
+        "stage": "manager",
+        "status": "done",
+        "message": f"Greenlit {len(greenlit)}/{len(designs)} design(s) for real listing.",
+        "count": len(greenlit),
+    }
+
+    yield {
+        "stage": "etsy",
+        "status": "active",
+        "message": f"Creating {len(greenlit)} real Etsy DRAFT listing(s) (not public)...",
+    }
+    queued = []
+    printful_count = 0
+    for design in greenlit:
+        entry = _stage_design(design, shop)
+        queued.append(entry)
+        if entry.get("printful_sync_product"):
+            printful_count += 1
+    yield {
+        "stage": "etsy",
+        "status": "done",
+        "message": f"Created {len(queued)} draft listing(s) on Etsy.",
+        "count": len(queued),
+    }
+    yield {
+        "stage": "printful",
+        "status": "done",
+        "message": f"Created {printful_count} Printful mockup product(s).",
+        "count": printful_count,
+    }
 
     pending = _load_pending()
     pending.extend(queued)
     _save_pending(pending)
-    return queued
+
+    yield {"stage": "complete", "queued": queued}
 
 
 def _stage_design(design, shop: Dict) -> dict:
@@ -174,7 +271,13 @@ def main() -> None:
 
     args = p.parse_args()
     if args.action == "run-batch":
-        queued = run_live_batch(k=args.k)
+        queued = []
+        for event in run_live_batch_stream(k=args.k):
+            if event["stage"] == "complete":
+                queued = event["queued"]
+            else:
+                marker = "..." if event["status"] == "active" else "done"
+                print(f"[{event['stage']:>12}] {marker:>4} — {event['message']}")
         print(f"Queued {len(queued)} design(s) for approval.")
     elif args.action == "approve":
         entry = approve_and_publish(args.design_id)
