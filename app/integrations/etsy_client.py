@@ -123,6 +123,80 @@ def get_shipping_profiles(shop_id: int) -> List[dict]:
     return _get(f"/shops/{shop_id}/shipping-profiles").get("results", [])
 
 
+def create_shipping_profile(
+    shop_id: int,
+    origin_postal_code: str,
+    title: str = "Free US Shipping",
+    primary_cost: float = 0.0,
+    secondary_cost: float = 0.0,
+    min_processing_time: int = 2,
+    max_processing_time: int = 5,
+    min_delivery_days: int = 5,
+    max_delivery_days: int = 8,
+) -> dict:
+    """Creates a new "manual" (flat-rate) shipping profile with a real US
+    domestic destination. Always use "manual", not "calculated" —
+    calculated profiles need a carrier_id + mail_class to have a valid
+    domestic option, can't be edited via the API once created (confirmed
+    live: PUT on a calculated profile's destination returns 400 "You
+    cannot make updates to calculated shipping profiles"), and a
+    misconfigured one (e.g. destination_country_iso left blank) causes
+    draft-listing creation to fail with shipping_profile_no_domestic_option
+    on item_weight/item_length with no way to repair it after the fact."""
+    return _post(
+        f"/shops/{shop_id}/shipping-profiles",
+        json_body={
+            "title": title,
+            "origin_country_iso": "US",
+            "origin_postal_code": origin_postal_code,
+            "primary_cost": primary_cost,
+            "secondary_cost": secondary_cost,
+            "min_processing_time": min_processing_time,
+            "max_processing_time": max_processing_time,
+            "processing_time_unit": "business_days",
+            "destination_country_iso": "US",
+            "min_delivery_days": min_delivery_days,
+            "max_delivery_days": max_delivery_days,
+        },
+    )
+
+
+def _has_valid_domestic_destination(profile: dict) -> bool:
+    for dest in profile.get("shipping_profile_destinations", []):
+        if dest.get("destination_country_iso") != "US":
+            continue
+        if profile.get("profile_type") == "calculated":
+            # Calculated (carrier-rate) profiles additionally need a real
+            # carrier + mail class to compute a domestic rate at all.
+            if dest.get("shipping_carrier_id") and dest.get("mail_class"):
+                return True
+            continue
+        return True
+    return False
+
+
+def get_or_create_domestic_shipping_profile_id(shop_id: int) -> int:
+    """Reuses an existing shipping profile that has a genuinely usable US
+    domestic destination, otherwise creates a fresh "manual" free-shipping
+    one. Picking profiles[0] blindly (the old behavior) breaks as soon as
+    that profile is a "calculated" one without a carrier configured —
+    which looks fine in get_shipping_profiles() but makes every new draft
+    listing fail validation on item_weight/item_length."""
+    profiles = get_shipping_profiles(shop_id)
+    for profile in profiles:
+        if _has_valid_domestic_destination(profile):
+            return profile["shipping_profile_id"]
+    origin_postal_code = profiles[0]["origin_postal_code"] if profiles else None
+    if not origin_postal_code:
+        raise RuntimeError(
+            "Your Etsy shop has no shipping profiles yet, and no origin postal "
+            "code is on file to create one. Create a shipping profile in the "
+            "Etsy seller dashboard before running the live pipeline."
+        )
+    created = create_shipping_profile(shop_id, origin_postal_code=origin_postal_code)
+    return created["shipping_profile_id"]
+
+
 def get_readiness_state_definitions(shop_id: int) -> List[dict]:
     """Etsy's newer "processing profiles" system: every *physical* listing
     now requires a readiness_state_id (in addition to shipping_profile_id),

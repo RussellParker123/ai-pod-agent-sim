@@ -164,12 +164,11 @@ def stage_archived_image(
 def _get_shop_context() -> Dict:
     me = etsy_client.get_me()
     shop_id = me["shop_id"]
-    profiles = etsy_client.get_shipping_profiles(shop_id)
-    if not profiles:
-        raise RuntimeError(
-            "Your Etsy shop has no shipping profiles yet. Create one in the Etsy "
-            "seller dashboard before running the live pipeline."
-        )
+    # Picks (or creates) a shipping profile that actually has a usable US
+    # domestic destination — a "calculated" profile without a carrier set
+    # looks valid but makes Etsy reject every new draft listing with
+    # shipping_profile_no_domestic_option on item_weight/item_length.
+    shipping_profile_id = etsy_client.get_or_create_domestic_shipping_profile_id(shop_id)
     # Etsy's processing-profiles system (rolled out 2026) requires every
     # physical listing to carry a readiness_state_id alongside
     # shipping_profile_id. Every item here is print-on-demand, so
@@ -183,7 +182,7 @@ def _get_shop_context() -> Dict:
     return_policy_id = etsy_client.get_or_create_return_policy_id(shop_id)
     return {
         "shop_id": shop_id,
-        "shipping_profile_id": profiles[0]["shipping_profile_id"],
+        "shipping_profile_id": shipping_profile_id,
         "readiness_state_id": readiness_state_id,
         "return_policy_id": return_policy_id,
     }
