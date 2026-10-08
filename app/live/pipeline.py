@@ -162,7 +162,14 @@ def run_live_batch_stream(k: int = 6, team_niches: int = 2, team_size: int = 3):
             "status": "active",
             "message": "OPENAI_API_KEY not set — falling back to simulated image URIs.",
         }
-    openai_image.image_agent_live(designs)
+    for finished in openai_image.image_agent_live_stream(designs):
+        yield {
+            "stage": "image",
+            "status": "active",
+            "message": f"{finished.design_id} ({finished.niche}) art finished.",
+            "design_id": finished.design_id,
+            "image_uri": finished.image_uri,
+        }
     yield {"stage": "image", "status": "done", "message": f"Generated {len(designs)} image(s).", "count": len(designs)}
 
     yield {"stage": "compliance", "status": "active", "message": "Checking for trademark/brand similarity risk..."}

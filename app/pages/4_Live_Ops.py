@@ -43,6 +43,7 @@ if not etsy_auth.is_connected():
 # app/sim/manager.py), driven live by app.live.pipeline.run_live_batch_stream()
 # — the only differences from simulation are real OpenAI art generation and
 # two extra real-world stages (deploying to Etsy, syncing to Printful).
+MANAGER_NODE = ("manager", "🧠", "MANAGER AI — CALL SIGN: DR. CYPHER")
 STAGE_NODES = [
     ("etsy_connect", "📡", "ETSY UPLINK"),
     ("trend", "📈", "TREND SCANNER"),
@@ -52,7 +53,6 @@ STAGE_NODES = [
     ("compliance", "🛡️", "COMPLIANCE DAEMON"),
     ("mockup", "🧵", "MOCKUP RENDER"),
     ("pricing", "💠", "PRICE CORE"),
-    ("manager", "🧠", "MANAGER AI"),
     ("etsy", "🛰️", "ETSY DEPLOY"),
     ("printful", "🏭", "PRINTFUL FAB LINK"),
 ]
@@ -67,6 +67,10 @@ CYBER_CSS = """
     background-size:24px 24px;}
   .cyber-title{color:#00fff2;letter-spacing:3px;font-size:13px;margin-bottom:10px;
     text-shadow:0 0 6px #00fff2aa;}
+  .command-deck{display:flex;justify-content:center;margin-bottom:14px;}
+  .command-deck .node{width:280px;border-width:2px;padding:14px 6px;}
+  .command-deck .node .icon{font-size:30px;}
+  .command-deck .node .label{font-size:11px;letter-spacing:1.5px;}
   .cyber-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:12px;}
   .node{border:1px solid #2a3b44;border-radius:8px;padding:10px 6px;text-align:center;
     background:rgba(10,14,20,.8);transition:all .25s;}
@@ -88,16 +92,20 @@ CYBER_CSS = """
 """
 
 
+def _node_html(key: str, icon: str, label: str, stage_state: dict) -> str:
+    cls = "node " + stage_state.get(key, "idle")
+    return f'<div class="{cls}"><div class="icon">{icon}</div><div class="label">{label}</div><div class="dot"></div></div>'
+
+
 def _cyber_html(stage_state: dict, log_lines: list) -> str:
-    nodes = ""
-    for key, icon, label in STAGE_NODES:
-        cls = "node " + stage_state.get(key, "idle")
-        nodes += f'<div class="{cls}"><div class="icon">{icon}</div><div class="label">{label}</div><div class="dot"></div></div>'
+    mgr = _node_html(*MANAGER_NODE, stage_state)
+    nodes = "".join(_node_html(key, icon, label, stage_state) for key, icon, label in STAGE_NODES)
     log_html = "".join(f'<div class="line">{line}</div>' for line in log_lines) or '<div class="line">&gt; standing by...</div>'
     return (
         CYBER_CSS
         + '<div class="cyber-wrap">'
         + '<div class="cyber-title">⚡ NEURALARTTREASURES // LIVE OPS CONSOLE ⚡</div>'
+        + f'<div class="command-deck">{mgr}</div>'
         + f'<div class="cyber-grid">{nodes}</div>'
         + f'<div class="term">{log_html}</div>'
         + "</div>"
@@ -111,18 +119,22 @@ with st.expander("🎨 Art team settings (multiple AI artists per trending niche
     st.caption(
         "The top N niches the trend/research agent scores highest each get their own small "
         "team of artist agents, each rendering the same niche in a different style, generated "
-        "in parallel. The AI manager then picks the strongest variant(s) to actually list — "
-        "more variants = more real OpenAI image spend."
+        "in parallel. Dr. Cypher (the manager agent) then picks the strongest variant(s) to "
+        "actually list — more variants = more real OpenAI image spend."
     )
     team_niches = st.number_input("Niches that get an art team", min_value=0, max_value=5, value=2)
     team_size = st.number_input("Artists per team (style variants)", min_value=1, max_value=5, value=3)
 run_clicked = st.button("▶ Run live batch (creates real Etsy DRAFT listings, not public)")
 
 console_slot = st.empty()
-stage_state = {key: "idle" for key, _, _ in STAGE_NODES}
+stage_state = {key: "idle" for key, _, _ in STAGE_NODES + [MANAGER_NODE]}
 log_lines: list = []
 with console_slot:
-    components.html(_cyber_html(stage_state, log_lines), height=330)
+    components.html(_cyber_html(stage_state, log_lines), height=380)
+
+st.caption("🖼️ Live art feed — thumbnails appear here the instant each artist agent finishes a piece.")
+gallery_slot = st.empty()
+gallery: list = []
 
 if run_clicked:
     try:
@@ -134,8 +146,18 @@ if run_clicked:
             stage_state[event["stage"]] = event["status"]
             log_lines.append(f"&gt; [{event['stage']}] {event['message']}")
             with console_slot:
-                components.html(_cyber_html(stage_state, log_lines[-10:]), height=330)
-            time.sleep(0.35)  # just pacing for readability — every event above is real work already done
+                components.html(_cyber_html(stage_state, log_lines[-10:]), height=380)
+
+            image_uri = event.get("image_uri")
+            if image_uri and not image_uri.startswith("sim://") and Path(image_uri).exists():
+                gallery.append((event["design_id"], image_uri))
+                with gallery_slot:
+                    recent = gallery[-6:]
+                    cols = st.columns(len(recent))
+                    for col, (design_id, path) in zip(cols, recent):
+                        col.image(path, caption=design_id, width=110)
+
+            time.sleep(0.25)  # just pacing for readability — every event above is real work already done
         st.success(f"Queued {len(queued)} design(s) for approval.")
     except NotConfiguredError as e:
         st.error(str(e))

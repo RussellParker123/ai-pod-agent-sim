@@ -49,7 +49,17 @@ def image_agent_live(designs: List[Design], max_workers: int = 4) -> None:
 
     Designs are generated concurrently (up to max_workers at once) so a
     "team" of several designs for the same niche finishes in roughly the
-    time of one call, not one-at-a-time."""
+    time of one call, not one-at-a-time. (Drains image_agent_live_stream();
+    use that directly to react to each image as it lands, e.g. in a UI.)"""
+    for _ in image_agent_live_stream(designs, max_workers=max_workers):
+        pass
+
+
+def image_agent_live_stream(designs: List[Design], max_workers: int = 4):
+    """Same as image_agent_live(), but yields each Design the moment its
+    image finishes (in completion order, not submission order) so a UI can
+    show a live thumbnail the instant an artist agent finishes a piece,
+    instead of waiting for the whole batch."""
     if not is_configured():
         warnings.warn(
             "OPENAI_API_KEY not set — falling back to simulated image URIs. "
@@ -58,21 +68,23 @@ def image_agent_live(designs: List[Design], max_workers: int = 4) -> None:
         )
         for d in designs:
             d.image_uri = f"sim://images/{d.design_id}.png"
+            yield d
         return
 
     images_dir = DATA_DIR / "images"
 
-    def _one(d: Design) -> None:
+    def _one(d: Design) -> Design:
         out_path = images_dir / f"{d.design_id}.png"
         generate_image(d.prompt, out_path)
         d.image_uri = str(out_path)
+        return d
 
     if len(designs) <= 1:
         for d in designs:
-            _one(d)
+            yield _one(d)
         return
 
     with ThreadPoolExecutor(max_workers=min(max_workers, len(designs))) as pool:
         futures = {pool.submit(_one, d): d for d in designs}
         for future in as_completed(futures):
-            future.result()  # re-raise any generation error on the main thread
+            yield future.result()  # re-raises any generation error on the main thread
