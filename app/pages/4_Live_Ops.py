@@ -5,7 +5,17 @@ Nothing on this page auto-runs on page load except read-only status checks.
 Every action that spends money or goes public requires an explicit button
 click here.
 """
+import sys
+from pathlib import Path
+
 import streamlit as st
+
+# Streamlit's multipage runner only puts the main script's directory (app/)
+# on sys.path, not the repo root — so the "app" package itself isn't
+# importable here unless we add the repo root ourselves.
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
 
 from app.integrations import etsy_auth, openai_image, printful_client
 from app.integrations.config import NotConfiguredError
