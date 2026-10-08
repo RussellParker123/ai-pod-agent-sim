@@ -257,7 +257,9 @@ class RecyclingStore:
         if suggestion["type"] not in REUSABLE_TYPES:
             raise RecyclingError(f"Suggestion type '{suggestion['type']}' is not a reuse option")
         record["reuse"] = {
-            "candidate_design_id": f"{record['source_design_id']}-R{int(record['lineage'].get('depth', 0)) + 1}",
+            # Unique per record: several runs can reuse the same simulated design ID (e.g. D005).
+            "candidate_design_id": (f"{record['source_design_id']}-R{int(record['lineage'].get('depth', 0)) + 1}"
+                                    f"-{record['record_id'][3:7]}"),
             "suggestion_id": suggestion_id,
             "type": suggestion["type"],
             "target_niche": suggestion.get("target_niche") or record["original"]["niche"],
