@@ -54,16 +54,28 @@ def get_catalog_variant(variant_id: int) -> dict:
     return _get(f"/products/variant/{variant_id}").get("result", {})
 
 
-def create_sync_product(name: str, variant_id: int, image_url: str, retail_price: str) -> dict:
+def create_sync_product(
+    name: str, variant_id: int, image_url: str, retail_price: str, preview_image_url: Optional[str] = None
+) -> dict:
     """Creates a Printful "sync product" (one product with the generated art
-    applied to a specific blank, e.g. an 11oz mug or a t-shirt variant)."""
+    applied to a specific blank, e.g. an 11oz mug or a t-shirt variant).
+
+    `image_url` is the flat print file (required, type="default"). Pass the
+    already-rendered product mockup as `preview_image_url` so Printful shows
+    an actual product photo (type="preview") instead of leaving it blank —
+    without this, Printful's own store page shows no photo for the product
+    even though the print file itself uploaded fine, since "default" files
+    are the print artwork, not a display photo."""
+    files = [{"type": "default", "url": image_url}]
+    if preview_image_url:
+        files.append({"type": "preview", "url": preview_image_url})
     body = {
         "sync_product": {"name": name},
         "sync_variants": [
             {
                 "retail_price": retail_price,
                 "variant_id": variant_id,
-                "files": [{"url": image_url}],
+                "files": files,
             }
         ],
     }

@@ -524,6 +524,7 @@ def _stage_design(design, shop: Dict) -> dict:
                 variant_id=variant_id,
                 image_url=etsy_image_url,
                 retail_price=f"{design.price:.2f}",
+                preview_image_url=mockup_image_url,
             )
 
     return {
