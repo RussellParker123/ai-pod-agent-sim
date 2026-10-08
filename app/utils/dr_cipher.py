@@ -1,6 +1,7 @@
 """
-Dr. Cipher - Original AI Scientist Character
-A mad scientist manager for the simulation arena
+Dr. Cypher - Original AI Scientist Character (module keeps the older
+"dr_cipher" spelling for compatibility).
+A mad scientist manager for the simulation arena.
 """
 
 def get_dr_cipher_svg():
@@ -105,30 +106,31 @@ def get_dr_cipher_svg():
 
 
 def get_cipher_quotes():
-    """Returns Dr. Cipher's personality quotes based on performance"""
+    """Returns Dr. Cypher's original personality lines by performance tier.
+    (Internal function/module names keep the older "cipher" spelling.)"""
     return {
         "excellent": [
-            "Excellent! The simulation performs with PRECISION! *adjusts goggles* Magnificent.",
-            "Wubba—I mean, GENIUS! Your agents have exceeded all calculations!",
-            "The numbers don't lie. This... is actually impressive. *crackles with electricity*",
-            "REMARKABLE! Even I didn't think it would work this well. Well done.",
+            "Prototype accepted. Log it, frame it, then make the next one sharper.",
+            "Every brief hit its print area. I may have to update my expectations upward.",
+            "Clean compliance, healthy margins. The lab coat stays on for the photo.",
+            "Remarkable. The agents followed the notes instead of arguing with them.",
         ],
         "good": [
-            "Satisfactory results. The simulation is... functional. *taps portal device*",
-            "Not terrible. Your agents show promise. They're learning.",
-            "Acceptable performance metrics. I've seen worse. Much worse.",
-            "The data suggests competence. I'll give you that much.",
+            "Solid work. The data agrees with me, which is how I like it.",
+            "Functional and sellable. Tighten the palettes and we talk about excellence.",
+            "Acceptable. A few prompts still read like guesses rather than briefs.",
+            "Progress noted on the clipboard. Do not make me erase it.",
         ],
         "mediocre": [
-            "Hmm. *crackles* The results are... underwhelming. Can we do better?",
-            "This performance is merely adequate. I expected more from my agents.",
-            "The simulation limps forward. Like a wounded dimensional portal.",
-            "*electric discharge* The algorithms cry out in disappointment.",
+            "Some of this holds up. The rest goes back to the bench with notes.",
+            "Half the batch forgot the product it was designed for. Re-read the brief.",
+            "Adequate is not a product category. Show me focal motifs.",
+            "The goggles are fogging up from disappointment. Rework the flagged ones.",
         ],
         "poor": [
-            "WHAT IS THIS?! The simulation CRUMBLES before me! *sparks fly*",
-            "*crackling intensifies* This is a CATASTROPHIC failure of epic proportions!",
-            "UNACCEPTABLE! The agents have betrayed my calculations! BETRAYED THEM!",
-            "*portal device malfunctions* This... this is a DISASTER of cosmic proportions!",
-        ]
+            "Nothing ships until the blockers are gone. Back to the drawing tablets.",
+            "These concepts would not survive a thumbnail. Start from the brief.",
+            "Compliance flags everywhere. Nobody touches the publish button today.",
+            "I have reviewed coffee stains with stronger composition. Again, with notes.",
+        ],
     }

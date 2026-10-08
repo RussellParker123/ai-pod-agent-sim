@@ -5,6 +5,7 @@ Nothing on this page auto-runs on page load except read-only status checks.
 Every action that spends money or goes public requires an explicit button
 click here.
 """
+import html
 import sys
 import time
 from pathlib import Path
@@ -166,7 +167,7 @@ if run_clicked:
                 queued = event["queued"]
                 continue
             stage_state[event["stage"]] = event["status"]
-            log_lines.append(f"&gt; [{event['stage']}] {event['message']}")
+            log_lines.append(f"&gt; [{html.escape(str(event['stage']))}] {html.escape(str(event['message']))}")
             with console_slot:
                 components.html(_cyber_html(stage_state, log_lines[-10:]), height=380)
 
@@ -205,15 +206,30 @@ else:
             if entry.get("etsy_image_url"):
                 st.image(entry["etsy_image_url"], width=300)
             st.write(entry["prompt"])
+            concept = (entry.get("quality") or {}).get("concept") or {}
+            image_check = (entry.get("quality") or {}).get("image") or {}
+            if concept:
+                st.caption(f"Concept pre-check (text only): {concept.get('status')} · issues: "
+                           + ("; ".join(concept.get("issues") or []) or "none"))
+            if image_check:
+                st.caption(f"Generated-image assessment: {image_check.get('status')} — {image_check.get('reason', '')}")
+            if entry.get("source") == "recycling":
+                st.info("Recycled reuse candidate (existing image, fresh gates). Lineage: "
+                        + ", ".join(f"{k}={v}" for k, v in (entry.get("lineage") or {}).items()
+                                    if k != "original_rejection"))
             st.caption(f"Etsy draft listing_id={entry['etsy_listing_id']} — waiting on your review (below Dr. Cypher's auto-publish threshold)")
+            reject_reason = st.text_input(
+                "Rejection reason (kept with the image in the Recycling Facility)",
+                value="rejected by human reviewer", key=f"reason_{i}_{entry['design_id']}",
+            )
             col_a, col_r = st.columns(2)
             if col_a.button("Approve & publish live", key=f"approve_{i}_{entry['design_id']}"):
                 pipeline.approve_and_publish(entry["design_id"])
                 st.success("Published.")
                 st.rerun()
             if col_r.button("Reject", key=f"reject_{i}_{entry['design_id']}"):
-                pipeline.reject(entry["design_id"])
-                st.warning("Rejected.")
+                rejected = pipeline.reject(entry["design_id"], reason=reject_reason.strip()[:300] or "rejected")
+                st.warning(f"Rejected. Image sent to the Recycling Facility (record {rejected.get('recycling_record_id')}).")
                 st.rerun()
 
 st.markdown("---")
@@ -250,6 +266,13 @@ else:
             else:
                 st.caption(f"**{entry['design_id']}** — no score recorded")
 
+            if st.button("♻️ Hold for reuse", key=f"hold_{entry['design_id']}",
+                         help="Send to the Recycling Facility for a metadata cross-reference (no new image)."):
+                try:
+                    record = pipeline.hold_archive_image_for_reuse(entry["design_id"])
+                    st.success(f"In the Recycling Facility as {record['record_id']} ({record['status']}).")
+                except ValueError as e:
+                    st.error(str(e))
             if entry["design_id"] in already_staged:
                 st.caption("✅ already staged")
             else:

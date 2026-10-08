@@ -394,9 +394,8 @@ def cross_reference(record: Dict, context: Dict) -> Dict:
         if p == product or p not in fits:
             continue
         fit = fits[p]
-        if orig_fit is not None and fit <= orig_fit:
-            continue
-        if fit < 0.75:
+        better = orig_fit is None or fit > orig_fit
+        if fit < (0.75 if better else 0.7):
             continue
         refs = [f"product_fit:{niche}:{p}"]
         same = [a for a in approved if a["niche"] == niche and a["product_type"] == p]
@@ -405,10 +404,13 @@ def cross_reference(record: Dict, context: Dict) -> Dict:
                  if a["niche"] == niche and a["product_type"] == p and a.get("manager_decision") == "GREENLIGHT"][:2]
         if p in top_products:
             refs.append(f"research:top_product_types:{p}")
-        conf = 0.7 * fit + (0.1 if same else 0) + (0.1 if p in top_products else 0) + (
+        conf = (0.7 if better else 0.55) * fit + (0.1 if same else 0) + (0.1 if p in top_products else 0) + (
             0.1 if ("fit" in reason_l or "margin" in reason_l) else 0)
         reasons = [f"Product-fit table rates '{niche}' on {p} at {fit}"
                    + (f" vs {orig_fit} on the original {product}" if orig_fit is not None else "")]
+        if not better:
+            reasons.append(f"Lower fit than the original product, but still viable; the rejected listing was "
+                           f"the {product} version, so confidence is reduced")
         if same:
             reasons.append(f"{len(same)} approved design(s) already sell this niche on {p}")
         if "margin" in reason_l:
@@ -482,3 +484,50 @@ def recycler_agent(records: List[Dict], store: RecyclingStore, context: Dict, re
     for record in records:
         if record["status"] == PENDING_ANALYSIS:
             store.analyze(record["record_id"], context, recycler_id=recycler_id, images_root=images_root)
+
+
+def enqueue_human_rejections(
+    store: RecyclingStore,
+    run_name: str,
+    designs: Iterable[Dict],
+    design_ids: Iterable[str],
+    context: Dict,
+    reason: str = "canceled by human on the Review page",
+    images_root: Optional[Path] = None,
+) -> Dict[str, List[str]]:
+    """Queue designs a human canceled (simulation runs). Idempotent: saving
+    the same overrides twice does not create duplicate records. Designs with
+    no generated image are reported as skipped and never generate one."""
+    by_id = {str(d.get("design_id")): d for d in designs}
+    out: Dict[str, List[str]] = {"created": [], "duplicate": [], "skipped_no_image": [], "unknown": []}
+    for design_id in design_ids:
+        design = by_id.get(str(design_id))
+        if design is None:
+            out["unknown"].append(str(design_id))
+            continue
+        record, outcome = store.enqueue(
+            design, rejected_by="human", reason=reason, source="simulation", source_ref=run_name,
+            stage="human_review", provenance={"run": run_name, "image_kind": "simulated"
+                                              if str(design.get("image_uri", "")).startswith("sim://") else "file"},
+        )
+        out[outcome].append(record["record_id"] if record else str(design_id))
+        if record and outcome == "created" and record["status"] == PENDING_ANALYSIS:
+            store.analyze(record["record_id"], context, images_root=images_root)
+    return out
+
+
+OUTCOME_GROUPS = {
+    "pending_reuse": (PENDING_ANALYSIS, PENDING_REVIEW, REUSE_REQUESTED, REENTERED),
+    "quarantined": (QUARANTINED,),
+    "unusable": (ARCHIVED, UNUSABLE),
+}
+
+
+def outcome_counts(records: Iterable[Dict]) -> Dict[str, int]:
+    """Counter groups shared by the arena, dashboard and Recycling page."""
+    out = {group: 0 for group in OUTCOME_GROUPS}
+    for record in records:
+        for group, statuses in OUTCOME_GROUPS.items():
+            if record.get("status") in statuses:
+                out[group] += 1
+    return out
