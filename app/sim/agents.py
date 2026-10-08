@@ -26,6 +26,16 @@ class Design:
     price: float = 0.0
     approved: bool = False
     marketing: Dict = field(default_factory=dict)
+    # Structured creative brief the prompt was rendered from (see app/sim/art_quality.py).
+    brief: Dict = field(default_factory=dict)
+    # Explainable quality review: {"concept": {...}, "image": {...}}. Concept checks are
+    # text/metadata-only; "image" records whether real pixels were ever assessed.
+    quality: Dict = field(default_factory=dict)
+    # Auditable reviewer feedback / revisions applied to this design.
+    review_history: List[Dict] = field(default_factory=list)
+    # Style variants and recycled reuse candidates point back at their source design.
+    parent_design_id: str = ""
+    lineage: Dict = field(default_factory=dict)
 
 
 @dataclass
@@ -90,13 +100,16 @@ def trend_agent(niches: List[str], k: int = 12, etsy_connector=None) -> List[Des
     return picks
 
 
-def prompt_agent(designs: List[Design]) -> None:
+def prompt_agent(designs: List[Design], research: Dict = None, product_types=None) -> None:
+    """Writes a structured, product-aware creative brief for each design and
+    renders the image prompt from it (see app/sim/art_quality.py). Reviewer
+    feedback already recorded on the design is folded into the brief, so a
+    rejected design is never re-sent with an unchanged prompt."""
+    from app.sim.art_quality import build_brief, render_prompt
+
     for d in designs:
-        style = ", ".join(d.style_keywords) if d.style_keywords else "minimal"
-        d.prompt = (
-            f"Original {d.niche} themed vector-style artwork, {style}, high contrast, "
-            f"commercial-friendly, no logos, no characters, no trademark terms"
-        )
+        d.brief = build_brief(d, research=research, product_types=product_types)
+        d.prompt = render_prompt(d.brief)
 
 
 def image_agent(designs: List[Design]) -> None:
@@ -165,8 +178,13 @@ def mockup_agent(
     preferred_product_types=None,
 ) -> None:
     for d in designs:
-        pool = [p for p in (preferred_product_types or []) if p in product_types]
-        d.product_type = random.choice(pool or product_types)
+        target = (d.brief or {}).get("target_product")
+        if target in product_types:
+            # The art was briefed for this product's print area; keep them matched.
+            d.product_type = target
+        else:
+            pool = [p for p in (preferred_product_types or []) if p in product_types]
+            d.product_type = random.choice(pool or product_types)
         d.unit_cost = PRODUCT_UNIT_COSTS[d.product_type]
 
 

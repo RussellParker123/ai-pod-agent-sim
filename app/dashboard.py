@@ -11,7 +11,10 @@ import plotly.graph_objects as go
 import plotly.express as px
 import streamlit.components.v1 as components
 
+import html
+
 from app.arena import build_arena_html, design_payload
+from app.sim.characters import character_from_report
 
 DATA_DIR = Path(__file__).resolve().parents[1] / "data"
 
@@ -278,61 +281,49 @@ total_revenue = df['revenue'].sum()
 total_profit = df['profit'].sum()
 approval_rate = (approved / total_designs * 100) if total_designs > 0 else 0
 
-# === DR. CIPHER (OVERSEER) ===
+# === DR. CYPHER (OVERSEER) ===
 st.markdown("---")
 
-cipher_quotes = {
-    "excellent": [
-        "*burp* Now THAT'S a simulation. Impressive.",
-        "Not bad at all. Your agents actually know what they're doing.",
-    ],
-    "good": [
-        "Eh, acceptable. Could be better though.",
-        "It's functional. That's all I'm saying.",
-    ],
-    "mediocre": [
-        "Really? That's the best you could do?",
-        "I don't want to say I'm disappointed, but... actually, I do.",
-    ],
-    "poor": [
-        "What is THIS?! My toaster has better throughput.",
-        "This is BAD. We need to recalibrate the whole pipeline.",
-    ],
-}
-
-if approval_rate >= 70:
-    tier = "excellent"
-elif approval_rate >= 50:
-    tier = "good"
-elif approval_rate >= 30:
-    tier = "mediocre"
-else:
-    tier = "poor"
-cipher_quote = cipher_quotes[tier][approved % len(cipher_quotes[tier])]
-
+# Dr. Cypher is the Manager agent's character: mood, location and lines come
+# from the run's recorded manager decisions (older runs are reconstructed).
+cypher = character_from_report(payload.get("manager"))
+visit_trail = " → ".join(html.escape(v.get("department", "?")) for v in cypher.visits) or "command"
 cipher_html = f"""
 <div class="rick-manager">
-    <div class="rick-title">🧪 DR. CIPHER - SIMULATION OVERSEER</div>
-    <div class="rick-quote">"{cipher_quote}"</div>
+    <div class="rick-title">🧪 {html.escape(cypher.display_name.upper())} - SIMULATION OVERSEER</div>
+    <div class="rick-quote">"{html.escape(cypher.line)}"</div>
     <div class="rick-stats">
-        <strong>Portal Device Reading:</strong> {approval_rate:.1f}% Approval Rate | {total_profit:,.0f}$ Total Profit | {total_designs} Designs Processed
+        <strong>Lab readout:</strong> {approval_rate:.1f}% Approval Rate | {total_profit:,.0f}$ Total Profit | {total_designs} Designs Processed<br>
+        <strong>Mood:</strong> {html.escape(cypher.mood)} | <strong>Rounds this run:</strong> {visit_trail}
     </div>
 </div>
 """
 st.markdown(cipher_html, unsafe_allow_html=True)
 
 # === GAME ARENA ===
-st.markdown("<h2>🏭 THE VAULT: LIVE SIMULATION ARENA</h2>", unsafe_allow_html=True)
-st.caption("Agents walk between stations carrying designs. Click agents or stations to inspect them; use the controls to pause or change speed.")
-components.html(build_arena_html(design_payload(df)), height=720)
+st.markdown("<h2>🏭 THE VAULT: SIMULATION ARENA (REPLAY)</h2>", unsafe_allow_html=True)
+st.caption(
+    "A replay of the selected recorded run: agents carry designs between rooms, rejected images with a "
+    "recycling record go to the Recycling Facility, recorded department transfers are replayed, and Dr. Cypher "
+    "walks to the departments he actually reviewed. Click agents, Dr. Cypher or rooms to inspect them."
+)
+components.html(
+    build_arena_html(
+        design_payload(df, recycling=payload.get("recycling")),
+        team=payload.get("team"),
+        character=cypher.to_dict(),
+        run_label=selected,
+    ),
+    height=980,
+)
 
 st.markdown("---")
 
 # === AGENT CHARACTERS ===
-st.markdown("<h2>👾 DR. CIPHER'S AGENT TEAM</h2>", unsafe_allow_html=True)
+st.markdown("<h2>👾 DR. CYPHER'S AGENT TEAM</h2>", unsafe_allow_html=True)
 st.markdown("""
 <div style='text-align: center; color: #00ff41; font-size: 12px; margin-bottom: 20px;'>
-Meet the misfits working under Dr. Cipher's management...
+Meet the misfits working under Dr. Cypher's management...
 </div>
 """, unsafe_allow_html=True)
 
@@ -677,7 +668,7 @@ st.markdown("""
 <div style='background: linear-gradient(135deg, #1a2d4e 0%, #2d1b4e 100%); 
             border: 2px solid #00ccff; border-radius: 8px; padding: 16px; 
             box-shadow: 0 0 10px rgba(0, 204, 255, 0.3);'>
-<h4 style='color: #00ccff;'>💡 AGENT SURVIVAL TIPS (From Dr. Cipher)</h4>
+<h4 style='color: #00ccff;'>💡 AGENT SURVIVAL TIPS (From Dr. Cypher)</h4>
 <ul style='color: #00ff41;'>
     <li>⚡ Higher trend scores = better marketplace performance</li>
     <li>🛡️ Compliance checks prevent costly rejections</li>
@@ -689,4 +680,4 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 st.markdown("---")
-st.caption("🤖 AI POD Agent Simulation v3.0 | Dr. Cipher's Multi-Agent Print-On-Demand Arena")
+st.caption("🤖 AI POD Agent Simulation v3.0 | Dr. Cypher's Multi-Agent Print-On-Demand Arena")

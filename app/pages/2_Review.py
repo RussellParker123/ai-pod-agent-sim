@@ -9,10 +9,12 @@ import json
 from pathlib import Path
 import pandas as pd
 import streamlit as st
+from app.sim import recycling
 from app.sim.approvals import final_review_status
 
 DATA_DIR = Path(__file__).resolve().parents[2] / "data"
 OVERRIDES = DATA_DIR / "overrides.json"
+RECYCLING_PATH = DATA_DIR / recycling.RECYCLING_FILENAME
 
 st.title("Review & Override")
 
@@ -44,6 +46,9 @@ for did, s in scores.items():
         "score": s["score"],
         "manager_decision": s["manager_decision"],
         "coach": s["coach"],
+        "reasons": "; ".join(s.get("reasons") or []),
+        "concept_check": s.get("concept_check", "n/a"),
+        "recycled_from": (d.get("lineage") or {}).get("recycled_from", ""),
         "user_override": run_over.get(did, "none"),
     })
 df = pd.DataFrame(rows).sort_values("score", ascending=False)
@@ -62,6 +67,31 @@ if marketing:
     st.caption(marketing["limitations"])
 else:
     st.info("No marketing draft: older run, disabled marketing department, or compliance/product details need review.")
+
+
+st.subheader("Art quality & reviewer feedback")
+quality_id = st.selectbox("Inspect art brief and checks for design", df["design_id"].tolist(), key="quality_pick")
+qd = designs.get(quality_id, {})
+quality = qd.get("quality") or {}
+concept = quality.get("concept") or {}
+image_check = quality.get("image") or {}
+if qd.get("brief"):
+    st.caption("Concept pre-check = text-only review of the brief/prompt before any image. It does not inspect "
+               "pixels or establish legal safety.")
+    st.json(qd["brief"], expanded=False)
+    st.text("Prompt: " + str(qd.get("prompt", "")))
+    if concept.get("checks"):
+        st.dataframe(pd.DataFrame(concept["checks"]).astype(str), hide_index=True, use_container_width=True)
+    st.text(f"Concept pre-check: {concept.get('status', 'n/a')} (score {concept.get('score', 'n/a')})")
+    st.text(f"Generated-image assessment: {image_check.get('status', 'n/a')} — {image_check.get('reason', '')}")
+    if qd.get("review_history"):
+        st.markdown("**Review history (what changed and why)**")
+        st.dataframe(pd.DataFrame(qd["review_history"]).astype(str), hide_index=True, use_container_width=True)
+    if qd.get("lineage"):
+        st.info("Recycled reuse candidate — needs your explicit approval like any other design. Lineage: "
+                + json.dumps(qd["lineage"]))
+else:
+    st.info("Older run: no structured brief or quality checks recorded.")
 
 
 def final_status(r):
@@ -88,6 +118,17 @@ if st.button("Save overrides"):
     all_over[run] = {r.design_id: r.user_override for r in edited.itertuples() if r.user_override != "none"}
     OVERRIDES.write_text(json.dumps(all_over, indent=2))
     st.success("Overrides saved.")
+    canceled = [d for d, action in all_over[run].items() if action == "cancel"]
+    if canceled:
+        store = recycling.RecyclingStore(RECYCLING_PATH)
+        context = recycling.build_context(
+            research=payload.get("research"),
+            approved_designs=[d for d in payload["designs"] if d.get("approved")],
+        )
+        summary = recycling.enqueue_human_rejections(store, run, payload["designs"], canceled, context)
+        store.save()
+        st.info(f"Recycling Facility: {len(summary['created'])} canceled image(s) queued, "
+                f"{len(summary['duplicate'])} already queued, {len(summary['skipped_no_image'])} had no image.")
 
 edited["final_status"] = edited.apply(final_status, axis=1)
 cols = st.columns(5)

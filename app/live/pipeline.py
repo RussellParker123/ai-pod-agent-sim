@@ -11,8 +11,8 @@ below its confidence threshold still falls back to you for manual approval.
 from __future__ import annotations
 
 import argparse
+import copy
 import json
-from dataclasses import replace
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, List
@@ -29,12 +29,25 @@ from app.live.catalog_map import (
     PRODUCT_UNIT_COSTS,
 )
 from app.live.gpt_agents import prompt_agent_live, trend_agent_live
+from app.sim import recycling
 from app.sim.agents import Design, compliance_agent, mockup_agent, pricing_agent
+from app.sim.art_quality import assess_concept, assess_generated_image, refine_designs, revise_for_compliance
 from app.sim.manager import ManagerAgent
 from app.sim.run_simulation import load_etsy_config
 
 PENDING_APPROVALS_PATH = DATA_DIR / "pending_approvals.json"
 IMAGE_MANIFEST_PATH = DATA_DIR / "image_manifest.json"
+RECYCLING_PATH = DATA_DIR / recycling.RECYCLING_FILENAME
+IMAGES_DIR = DATA_DIR / "images"
+
+
+def _recycling_store() -> recycling.RecyclingStore:
+    return recycling.RecyclingStore(RECYCLING_PATH)
+
+
+def _live_recycling_context() -> dict:
+    approved = [e for e in _load_pending() if e.get("status") == "live"]
+    return recycling.build_context(approved_designs=approved, archive=list_image_archive())
 
 
 def _load_pending() -> List[dict]:
@@ -61,15 +74,12 @@ def _append_image_manifest(design, manager: ManagerAgent) -> None:
         with open(IMAGE_MANIFEST_PATH, "r", encoding="utf-8") as f:
             manifest = json.load(f)
     # Art-team style variants (e.g. "D010-v2") are built *after* scoring and
-    # share their parent design's score/decision — look that up by stripping
-    # the "-vN" suffix if the variant itself has no direct entry.
-    scoring = manager.design_scores.get(design.design_id)
-    if scoring is None:
-        base_id = design.design_id.rsplit("-v", 1)[0]
-        scoring = manager.design_scores.get(base_id, {})
+    # share their parent design's score/decision (ManagerAgent.score_for).
+    scoring = manager.score_for(design)
     manifest.append(
         {
             "design_id": design.design_id,
+            "parent_design_id": design.parent_design_id or None,
             "niche": design.niche,
             "product_type": design.product_type,
             "price": design.price,
@@ -77,6 +87,9 @@ def _append_image_manifest(design, manager: ManagerAgent) -> None:
             "image_uri": design.image_uri,
             "manager_score": scoring.get("score"),
             "manager_decision": scoring.get("manager_decision"),
+            "compliance_status": design.compliance_status,
+            "concept_check": (design.quality.get("concept") or {}).get("status"),
+            "image_assessment": (design.quality.get("image") or {}).get("status"),
             "generated_at": datetime.now().isoformat(timespec="seconds"),
         }
     )
@@ -129,28 +142,31 @@ def stage_archived_image(
     never got queued (e.g. from a past run that was dropped or crashed
     before completing) — into a real Etsy draft listing + Printful mockup,
     *without* generating any new image or spending any new OpenAI credits.
-    You've already reviewed the image yourself by choosing to stage it, so
-    this skips the (simulated) compliance_agent and marks it approved
-    directly. Appends to the same pending-approval queue as a normal batch
+    The (simulated) compliance check still runs on the metadata you enter,
+    and images the Recycling Facility quarantined or marked unusable are
+    refused. Appends to the same pending-approval queue as a normal batch
     run — you still click Approve & publish to make it live."""
     design_id = design_id.strip()
     if any(e["design_id"] == design_id for e in _load_pending()):
         raise ValueError(f"design_id={design_id!r} has already been staged once.")
+    if _recycling_store().is_blocked_image(image_uri):
+        raise ValueError("This image is quarantined/unusable in the Recycling Facility and cannot be staged.")
 
-    shop = _get_shop_context()
     design = Design(
         design_id=design_id,
         niche=niche,
         trend_score=0.0,
         prompt=description,
         image_uri=image_uri,
-        compliance_status="pass",
-        compliance_notes="manually reviewed by human before staging from the image archive",
         product_type=product_type,
         unit_cost=PRODUCT_UNIT_COSTS.get(product_type, 7.0),
         price=price,
-        approved=True,
     )
+    compliance_agent([design])
+    if design.compliance_status != "pass":
+        raise ValueError(f"Compliance check flagged this listing: {design.compliance_notes}")
+    design.compliance_notes += " (human selected this archived image for staging)"
+    shop = _get_shop_context()
     entry = _stage_design(design, shop)
     entry["published_by"] = None
     entry["source"] = "image_archive"
@@ -217,9 +233,13 @@ def _build_image_team(designs: List, team_niches: int, team_size: int) -> List:
             expanded.append(d)
             continue
         for i in range(team_size):
-            variant = replace(d, design_id=f"{d.design_id}-v{i + 1}")
+            # Deep copy so variants never share mutable brief/quality/history/marketing state.
+            variant = copy.deepcopy(d)
+            variant.design_id = f"{d.design_id}-v{i + 1}"
+            variant.parent_design_id = d.design_id
             style = STYLE_MODIFIERS[i % len(STYLE_MODIFIERS)]
             variant.prompt = f"{d.prompt}, {style}"
+            variant.brief["variant_style"] = style
             expanded.append(variant)
     return expanded
 
@@ -242,6 +262,7 @@ def run_live_batch_stream(
     team_size: int = 3,
     manager_auto_publish: bool = False,
     auto_publish_threshold: float = 0.85,
+    image_assessor=None,
 ):
     """Same pipeline as run_live_batch(), but yields a progress event after
     each agent stage completes so a UI can show the real agents working
@@ -270,6 +291,13 @@ def run_live_batch_stream(
     Everything else still lands in the pending-approval queue for you to
     review and publish manually, exactly as before. You remain the fallback
     for anything the Manager isn't confident enough to decide on its own.
+
+    Art quality: prompts are written from structured, product-aware briefs
+    and pass an explainable text-only concept pre-check (bounded rework)
+    BEFORE the greenlight — this is concept approval, not image approval.
+    After generation each image gets a separate image assessment (offline
+    file checks, or ``image_assessor`` if you pass one). Images are never
+    auto-regenerated: at most one paid image per greenlit design/variant.
 
     Yields dicts: {"stage": str, "status": "active"|"done", "message": str,
     "count": Optional[int]}. The final event is
@@ -305,12 +333,24 @@ def run_live_batch_stream(
 
     prompt_note = "via GPT" if openai_text.is_configured() else "templated — add OPENAI_API_KEY for real GPT prompts"
     yield {"stage": "prompt", "status": "active", "message": f"Writing original, trademark-safe prompts ({prompt_note})..."}
-    prompt_agent_live(designs)
-    yield {"stage": "prompt", "status": "done", "message": f"Wrote {len(designs)} prompt(s).", "count": len(designs)}
+    product_types = tuple(config["product_types"])
+    prompt_agent_live(designs, product_types=product_types)
+    quality = refine_designs(designs, product_types=product_types)
+    yield {
+        "stage": "prompt",
+        "status": "done",
+        "message": f"Wrote {len(designs)} brief-based prompt(s); concept pre-check passed {quality['passed']}, "
+        f"reworked {quality['revised']} time(s), blocked {quality['blocked']} (text-only check, no image yet).",
+        "count": len(designs),
+    }
 
     yield {"stage": "compliance", "status": "active", "message": "Checking for trademark/brand similarity risk (no image needed yet)..."}
     compliance_agent(designs)
-    manager.review_compliance(designs, recheck=compliance_agent)
+    manager.review_compliance(
+        designs,
+        recheck=compliance_agent,
+        revise=lambda d: revise_for_compliance(d, product_types=product_types),
+    )
     passed = sum(1 for d in designs if d.compliance_status == "pass")
     yield {
         "stage": "compliance",
@@ -320,7 +360,7 @@ def run_live_batch_stream(
     }
 
     yield {"stage": "mockup", "status": "active", "message": "Assigning product mockups (mug/tshirt/tote)..."}
-    mockup_agent(designs, product_types=tuple(config["product_types"]))
+    mockup_agent(designs, product_types=product_types)
     yield {"stage": "mockup", "status": "done", "message": f"Mocked up {len(designs)} product(s).", "count": len(designs)}
 
     yield {"stage": "pricing", "status": "active", "message": "Pricing for target margin..."}
@@ -331,12 +371,14 @@ def run_live_batch_stream(
     yield {"stage": "manager", "status": "active", "message": "Manager scoring and making the greenlight call (before spending on art)..."}
     manager.score_and_decide(designs)
     approved = [d for d in designs if d.approved]
-    approved.sort(key=lambda d: manager.design_scores.get(d.design_id, {}).get("score", 0.0), reverse=True)
+    approved.sort(key=lambda d: manager.score_for(d).get("score", 0.0), reverse=True)
     greenlit = approved[:k]
     yield {
         "stage": "manager",
         "status": "done",
-        "message": f"Greenlit {len(greenlit)}/{len(designs)} design(s) for real listing — only these will get real art.",
+        "message": f"Dr. Cypher concept-greenlit {len(greenlit)}/{len(designs)} design(s) for real listing — only these "
+        f"will get real art. {len(designs) - len(approved)} concept-only rejection(s) have no image and are not "
+        "sent to recycling.",
         "count": len(greenlit),
     }
 
@@ -361,6 +403,7 @@ def run_live_batch_stream(
             "message": "OPENAI_API_KEY not set — falling back to simulated image URIs.",
         }
     for finished in openai_image.image_agent_live_stream(greenlit):
+        finished.quality["image"] = assess_generated_image(finished, assessor=image_assessor)
         _append_image_manifest(finished, manager)
         yield {
             "stage": "image",
@@ -381,7 +424,7 @@ def run_live_batch_stream(
     auto_published = 0
     for design in greenlit:
         entry = _stage_design(design, shop)
-        score = manager.design_scores.get(design.design_id, {}).get("score", 0.0)
+        score = manager.score_for(design).get("score", 0.0)
         if manager_auto_publish and score >= auto_publish_threshold:
             etsy_client.publish_listing(
                 entry["etsy_shop_id"], entry["etsy_listing_id"], return_policy_id=shop["return_policy_id"]
@@ -540,6 +583,13 @@ def _stage_design(design, shop: Dict) -> dict:
         "mockup_image_url": mockup_image_url,
         "printful_sync_product": printful_product,
         "status": "pending_approval",
+        "trend_score": design.trend_score,
+        "compliance_status": design.compliance_status,
+        "compliance_notes": design.compliance_notes,
+        "brief": design.brief,
+        "quality": design.quality,
+        "parent_design_id": design.parent_design_id or None,
+        "lineage": design.lineage,
     }
 
 
@@ -561,14 +611,102 @@ def approve_and_publish(design_id: str) -> dict:
     raise ValueError(f"No pending approval found for design_id={design_id!r}")
 
 
-def reject(design_id: str) -> dict:
+def reject(design_id: str, reason: str = "rejected by human reviewer") -> dict:
+    """Rejects a pending design (its Etsy listing stays a draft) and delivers
+    its already-generated image to the Recycling Facility once, with
+    provenance. The image file is never deleted and no new image is made."""
     pending = _load_pending()
     for entry in pending:
         if entry["design_id"] == design_id and entry["status"] == "pending_approval":
             entry["status"] = "rejected"
+            entry["rejection_reason"] = reason
+            record = _recycle_live_entry(entry, rejected_by="human", reason=reason)
+            entry["recycling_record_id"] = record["record_id"] if record else None
             _save_pending(pending)
             return entry
     raise ValueError(f"No pending approval found for design_id={design_id!r}")
+
+
+def _recycle_live_entry(entry: dict, rejected_by: str, reason: str, provenance: dict = None):
+    store = _recycling_store()
+    record, outcome = store.enqueue(
+        entry, rejected_by=rejected_by, reason=reason, source="live", source_ref="live",
+        stage="human_review", provenance=provenance or {
+            "etsy_listing_id": entry.get("etsy_listing_id"),
+            "etsy_shop_id": entry.get("etsy_shop_id"),
+            "pipeline_source": entry.get("source", "live_batch"),
+        },
+    )
+    if record and outcome == "created" and record["status"] == recycling.PENDING_ANALYSIS:
+        store.analyze(record["record_id"], _live_recycling_context(), recycler_id="recycler-1",
+                      images_root=IMAGES_DIR)
+    store.save()
+    return record
+
+
+def hold_archive_image_for_reuse(design_id: str) -> dict:
+    """Send an Image Archive entry (including orphaned files with no
+    manifest record) to the Recycling Facility for cross-referencing."""
+    entry = next((e for e in list_image_archive() if e["design_id"] == design_id), None)
+    if entry is None:
+        raise ValueError(f"No archived image for design_id={design_id!r}")
+    orphan = entry.get("niche") is None
+    return _recycle_live_entry(
+        dict(entry, compliance_status=entry.get("compliance_status") or ("pending" if orphan else "pass")),
+        rejected_by="human",
+        reason="held for reuse from the image archive" + (" (orphan file, no metadata)" if orphan else ""),
+        provenance={"pipeline_source": "image_archive", "orphan": orphan,
+                    "generated_at": entry.get("generated_at"), "manager_score": entry.get("manager_score")},
+    )
+
+
+def stage_recycled_candidate(record_id: str) -> dict:
+    """Turns a reuse-requested Recycling Facility record into a *new* Etsy
+    DRAFT using the existing image (no new image generation). The candidate
+    must pass the current compliance check, concept check, pricing and the
+    Manager's score; it is then queued for explicit human approval and is
+    never auto-published. Blocked candidates are recorded and not staged."""
+    store = _recycling_store()
+    record = store.get(record_id)
+    if record["status"] == recycling.REENTERED:
+        return {"status": "already_reentered", "record": record}
+    if record["source"] != "live" or record["asset_kind"] != "generated_image":
+        raise ValueError("Only live, actually generated images can be staged from recycling.")
+    if recycling.safe_image_path(record["image_uri"], IMAGES_DIR) is None:
+        raise ValueError("Original image file is missing or outside data/images; nothing to reuse.")
+    design = store.build_candidate(record_id)
+    if any(e["design_id"] == design.design_id for e in _load_pending()):
+        raise ValueError(f"design_id={design.design_id!r} has already been staged once.")
+
+    config = load_etsy_config()
+    compliance_agent([design])
+    design.quality["concept"] = assess_concept(design)
+    design.unit_cost = PRODUCT_UNIT_COSTS.get(design.product_type, 7.0)
+    pricing_agent([design], target_margin=config.get("target_margin", 0.42))
+    manager = ManagerAgent()
+    manager.review_pricing([design])
+    manager.score_and_decide([design])
+    decision = manager.score_for(design).get("manager_decision", "BLOCK")
+    gates = {
+        "compliance": design.compliance_status,
+        "quality": design.quality["concept"]["status"],
+        "pricing": f"${design.price:.2f}",
+        "manager": decision,
+    }
+    if decision == "BLOCK":
+        store.mark_reentered(record_id, "live:blocked", dict(gates, human_approval="not reached"))
+        store.save()
+        return {"status": "blocked", "gates": gates, "record": record}
+
+    entry = _stage_design(design, _get_shop_context())
+    entry["published_by"] = None  # never auto-published
+    entry["source"] = "recycling"
+    pending = _load_pending()
+    pending.append(entry)
+    _save_pending(pending)
+    store.mark_reentered(record_id, "live:etsy_draft", dict(gates, human_approval="pending (Live Ops)"))
+    store.save()
+    return {"status": "staged", "gates": gates, "entry": entry}
 
 
 def list_pending() -> List[dict]:
@@ -602,8 +740,11 @@ def main() -> None:
     approve_p = sub.add_parser("approve", help="Publish a pending design's Etsy listing live")
     approve_p.add_argument("design_id")
 
-    reject_p = sub.add_parser("reject", help="Reject a pending design (leaves Etsy listing as draft)")
+    reject_p = sub.add_parser(
+        "reject", help="Reject a pending design (leaves Etsy listing as draft; image goes to recycling)"
+    )
     reject_p.add_argument("design_id")
+    reject_p.add_argument("--reason", default="rejected by human reviewer")
 
     sub.add_parser("list", help="List pending approvals")
 
@@ -627,7 +768,7 @@ def main() -> None:
         entry = approve_and_publish(args.design_id)
         print(f"Published: {entry}")
     elif args.action == "reject":
-        entry = reject(args.design_id)
+        entry = reject(args.design_id, reason=args.reason)
         print(f"Rejected: {entry}")
     elif args.action == "list":
         for entry in list_pending():
