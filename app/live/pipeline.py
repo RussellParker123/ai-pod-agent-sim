@@ -1,15 +1,19 @@
 """Live pipeline: generates real designs, creates Etsy DRAFT listings and
-Printful mockups, and queues everything for human approval.
+Printful mockups, and queues everything for approval.
 
-Nothing in this module ever makes an Etsy listing public or places a real
-Printful order — those are the two actions gated behind explicit human
-approval (see approve_and_publish() here and order_sync.py for fulfillment).
+By default nothing in this module makes an Etsy listing public or places a
+real Printful order — those actions are gated behind explicit human approval
+(see approve_and_publish() here and order_sync.py for fulfillment). Opt in to
+`manager_auto_publish=True` on run_live_batch_stream() to let the Manager
+agent (Dr. Cypher) publish its own highest-confidence designs live; anything
+below its confidence threshold still falls back to you for manual approval.
 """
 from __future__ import annotations
 
 import argparse
 import json
 from dataclasses import replace
+from datetime import datetime
 from pathlib import Path
 from typing import Dict, List
 
@@ -22,6 +26,7 @@ from app.sim.manager import ManagerAgent
 from app.sim.run_simulation import load_etsy_config
 
 PENDING_APPROVALS_PATH = DATA_DIR / "pending_approvals.json"
+IMAGE_MANIFEST_PATH = DATA_DIR / "image_manifest.json"
 
 
 def _load_pending() -> List[dict]:
@@ -35,6 +40,73 @@ def _save_pending(items: List[dict]) -> None:
     PENDING_APPROVALS_PATH.parent.mkdir(parents=True, exist_ok=True)
     with open(PENDING_APPROVALS_PATH, "w", encoding="utf-8") as f:
         json.dump(items, f, indent=2)
+
+
+def _append_image_manifest(design, manager: ManagerAgent) -> None:
+    """Records every real image the moment it's generated — niche, prompt,
+    and the Manager's score/decision that justified spending on it — so
+    spend is always auditable later, even if the batch crashes before
+    reaching Etsy/Printful or a draft never gets approved. See
+    list_image_archive() to read this back."""
+    manifest = []
+    if IMAGE_MANIFEST_PATH.exists():
+        with open(IMAGE_MANIFEST_PATH, "r", encoding="utf-8") as f:
+            manifest = json.load(f)
+    # Art-team style variants (e.g. "D010-v2") are built *after* scoring and
+    # share their parent design's score/decision — look that up by stripping
+    # the "-vN" suffix if the variant itself has no direct entry.
+    scoring = manager.design_scores.get(design.design_id)
+    if scoring is None:
+        base_id = design.design_id.rsplit("-v", 1)[0]
+        scoring = manager.design_scores.get(base_id, {})
+    manifest.append(
+        {
+            "design_id": design.design_id,
+            "niche": design.niche,
+            "product_type": design.product_type,
+            "price": design.price,
+            "prompt": design.prompt,
+            "image_uri": design.image_uri,
+            "manager_score": scoring.get("score"),
+            "manager_decision": scoring.get("manager_decision"),
+            "generated_at": datetime.now().isoformat(timespec="seconds"),
+        }
+    )
+    IMAGE_MANIFEST_PATH.parent.mkdir(parents=True, exist_ok=True)
+    with open(IMAGE_MANIFEST_PATH, "w", encoding="utf-8") as f:
+        json.dump(manifest, f, indent=2)
+
+
+def list_image_archive() -> List[dict]:
+    """Every real image ever generated, manifested (design_id, niche,
+    manager score/decision) when generated after this feature shipped, plus
+    any older orphaned files in data/images/ with no manifest record (from
+    before image generation moved to the Manager-approval step)."""
+    manifest = []
+    if IMAGE_MANIFEST_PATH.exists():
+        with open(IMAGE_MANIFEST_PATH, "r", encoding="utf-8") as f:
+            manifest = json.load(f)
+    known_paths = {Path(e["image_uri"]).name for e in manifest if e.get("image_uri")}
+
+    images_dir = DATA_DIR / "images"
+    orphaned = []
+    if images_dir.exists():
+        for path in sorted(images_dir.glob("*.png")):
+            if path.name not in known_paths:
+                orphaned.append(
+                    {
+                        "design_id": path.stem,
+                        "niche": None,
+                        "product_type": None,
+                        "price": None,
+                        "prompt": None,
+                        "image_uri": str(path),
+                        "manager_score": None,
+                        "manager_decision": None,
+                        "generated_at": None,
+                    }
+                )
+    return manifest + orphaned
 
 
 def _get_shop_context() -> Dict:
@@ -97,7 +169,13 @@ def run_live_batch(k: int = 6) -> List[dict]:
     return queued
 
 
-def run_live_batch_stream(k: int = 6, team_niches: int = 2, team_size: int = 3):
+def run_live_batch_stream(
+    k: int = 6,
+    team_niches: int = 2,
+    team_size: int = 3,
+    manager_auto_publish: bool = False,
+    auto_publish_threshold: float = 0.85,
+):
     """Same pipeline as run_live_batch(), but yields a progress event after
     each agent stage completes so a UI can show the real agents working
     live, stage by stage, instead of just a final result. Every stage here
@@ -106,11 +184,25 @@ def run_live_batch_stream(k: int = 6, team_niches: int = 2, team_size: int = 3):
     generation, and two new stages (etsy, printful) do real API calls that
     don't exist in pure simulation mode.
 
-    team_niches/team_size: the top `team_niches` trending niches each get a
-    small "art team" of `team_size` style variants generated in parallel
-    (see _build_image_team), instead of a single design. This increases
+    Real AI images cost real money, so the Manager's full review (trend,
+    compliance, mockup, pricing, and the final greenlight score) now runs
+    BEFORE any image is generated. Only designs the Manager has actually
+    greenlit — capped at k, best score first — get a real OpenAI image. No
+    credits are spent on candidates that get dropped along the way.
+
+    team_niches/team_size: among the greenlit designs, the top `team_niches`
+    trending niches each get a small "art team" of `team_size` style
+    variants generated in parallel (see _build_image_team), instead of a
+    single design, so you have real options to pick from. This increases
     real OpenAI spend proportionally — set team_size=1 or team_niches=0 to
     disable and go back to one image per design.
+
+    manager_auto_publish: if True, the Manager (Dr. Cypher) will publish an
+    Etsy listing live immediately — no human click needed — for any
+    greenlit design whose manager score is >= auto_publish_threshold.
+    Everything else still lands in the pending-approval queue for you to
+    review and publish manually, exactly as before. You remain the fallback
+    for anything the Manager isn't confident enough to decide on its own.
 
     Yields dicts: {"stage": str, "status": "active"|"done", "message": str,
     "count": Optional[int]}. The final event is
@@ -149,37 +241,7 @@ def run_live_batch_stream(k: int = 6, team_niches: int = 2, team_size: int = 3):
     prompt_agent_live(designs)
     yield {"stage": "prompt", "status": "done", "message": f"Wrote {len(designs)} prompt(s).", "count": len(designs)}
 
-    before_team = len(designs)
-    designs = _build_image_team(designs, team_niches=team_niches, team_size=team_size)
-    added = len(designs) - before_team
-    if added > 0:
-        yield {
-            "stage": "image_team",
-            "status": "done",
-            "message": f"Assembled art teams of {team_size} on the top {team_niches} trending niche(s) "
-            f"(+{added} style variant(s) to generate).",
-            "count": len(designs),
-        }
-
-    if openai_image.is_configured():
-        yield {"stage": "image", "status": "active", "message": f"Generating {len(designs)} real AI image(s) via OpenAI (in parallel)..."}
-    else:
-        yield {
-            "stage": "image",
-            "status": "active",
-            "message": "OPENAI_API_KEY not set — falling back to simulated image URIs.",
-        }
-    for finished in openai_image.image_agent_live_stream(designs):
-        yield {
-            "stage": "image",
-            "status": "active",
-            "message": f"{finished.design_id} ({finished.niche}) art finished.",
-            "design_id": finished.design_id,
-            "image_uri": finished.image_uri,
-        }
-    yield {"stage": "image", "status": "done", "message": f"Generated {len(designs)} image(s).", "count": len(designs)}
-
-    yield {"stage": "compliance", "status": "active", "message": "Checking for trademark/brand similarity risk..."}
+    yield {"stage": "compliance", "status": "active", "message": "Checking for trademark/brand similarity risk (no image needed yet)..."}
     compliance_agent(designs)
     manager.review_compliance(designs, recheck=compliance_agent)
     passed = sum(1 for d in designs if d.compliance_status == "pass")
@@ -199,15 +261,48 @@ def run_live_batch_stream(k: int = 6, team_niches: int = 2, team_size: int = 3):
     manager.review_pricing(designs)
     yield {"stage": "pricing", "status": "done", "message": f"Priced {len(designs)} design(s).", "count": len(designs)}
 
-    yield {"stage": "manager", "status": "active", "message": "Manager scoring and making the greenlight call..."}
+    yield {"stage": "manager", "status": "active", "message": "Manager scoring and making the greenlight call (before spending on art)..."}
     manager.score_and_decide(designs)
-    greenlit = [d for d in designs if d.approved][:k]
+    approved = [d for d in designs if d.approved]
+    approved.sort(key=lambda d: manager.design_scores.get(d.design_id, {}).get("score", 0.0), reverse=True)
+    greenlit = approved[:k]
     yield {
         "stage": "manager",
         "status": "done",
-        "message": f"Greenlit {len(greenlit)}/{len(designs)} design(s) for real listing.",
+        "message": f"Greenlit {len(greenlit)}/{len(designs)} design(s) for real listing — only these will get real art.",
         "count": len(greenlit),
     }
+
+    before_team = len(greenlit)
+    greenlit = _build_image_team(greenlit, team_niches=team_niches, team_size=team_size)
+    added = len(greenlit) - before_team
+    if added > 0:
+        yield {
+            "stage": "image_team",
+            "status": "done",
+            "message": f"Assembled art teams of {team_size} on the top {team_niches} greenlit niche(s) "
+            f"(+{added} style variant(s) to generate).",
+            "count": len(greenlit),
+        }
+
+    if openai_image.is_configured():
+        yield {"stage": "image", "status": "active", "message": f"Generating {len(greenlit)} real AI image(s) via OpenAI for the greenlit design(s) only (in parallel)..."}
+    else:
+        yield {
+            "stage": "image",
+            "status": "active",
+            "message": "OPENAI_API_KEY not set — falling back to simulated image URIs.",
+        }
+    for finished in openai_image.image_agent_live_stream(greenlit):
+        _append_image_manifest(finished, manager)
+        yield {
+            "stage": "image",
+            "status": "active",
+            "message": f"{finished.design_id} ({finished.niche}) art finished.",
+            "design_id": finished.design_id,
+            "image_uri": finished.image_uri,
+        }
+    yield {"stage": "image", "status": "done", "message": f"Generated {len(greenlit)} image(s) — none wasted on dropped designs.", "count": len(greenlit)}
 
     yield {
         "stage": "etsy",
@@ -216,8 +311,17 @@ def run_live_batch_stream(k: int = 6, team_niches: int = 2, team_size: int = 3):
     }
     queued = []
     printful_count = 0
+    auto_published = 0
     for design in greenlit:
         entry = _stage_design(design, shop)
+        score = manager.design_scores.get(design.design_id, {}).get("score", 0.0)
+        if manager_auto_publish and score >= auto_publish_threshold:
+            etsy_client.publish_listing(entry["etsy_shop_id"], entry["etsy_listing_id"])
+            entry["status"] = "live"
+            entry["published_by"] = "manager"
+            auto_published += 1
+        else:
+            entry["published_by"] = None
         queued.append(entry)
         if entry.get("printful_sync_product"):
             printful_count += 1
@@ -227,6 +331,15 @@ def run_live_batch_stream(k: int = 6, team_niches: int = 2, team_size: int = 3):
         "message": f"Created {len(queued)} draft listing(s) on Etsy.",
         "count": len(queued),
     }
+    if manager_auto_publish:
+        remaining = len(queued) - auto_published
+        yield {
+            "stage": "manager_publish",
+            "status": "done",
+            "message": f"Manager (Dr. Cypher) auto-published {auto_published} design(s) with score >= {auto_publish_threshold} live. "
+            f"{remaining} design(s) below that bar are waiting for your review in Pending Approvals.",
+            "count": auto_published,
+        }
     yield {
         "stage": "printful",
         "status": "done",
@@ -294,12 +407,15 @@ def _stage_design(design, shop: Dict) -> dict:
 
 
 def approve_and_publish(design_id: str) -> dict:
-    """Human approval action: publishes the Etsy draft listing live."""
+    """Human fallback approval action: publishes the Etsy draft listing
+    live. Used for anything the Manager didn't auto-publish on its own
+    (see manager_auto_publish on run_live_batch_stream)."""
     pending = _load_pending()
     for entry in pending:
         if entry["design_id"] == design_id and entry["status"] == "pending_approval":
             etsy_client.publish_listing(entry["etsy_shop_id"], entry["etsy_listing_id"])
             entry["status"] = "live"
+            entry["published_by"] = "human"
             _save_pending(pending)
             return entry
     raise ValueError(f"No pending approval found for design_id={design_id!r}")
@@ -331,6 +447,17 @@ def main() -> None:
     run_p.add_argument("--k", type=int, default=6)
     run_p.add_argument("--team-niches", type=int, default=2, help="Top N trending niches that get an art team")
     run_p.add_argument("--team-size", type=int, default=3, help="Style variants generated per art-team niche")
+    run_p.add_argument(
+        "--manager-auto-publish",
+        action="store_true",
+        help="Let the Manager (Dr. Cypher) publish its own highest-confidence designs live, no human click needed",
+    )
+    run_p.add_argument(
+        "--auto-publish-threshold",
+        type=float,
+        default=0.85,
+        help="Manager score (0-1) required for an auto-publish decision",
+    )
 
     approve_p = sub.add_parser("approve", help="Publish a pending design's Etsy listing live")
     approve_p.add_argument("design_id")
@@ -343,7 +470,13 @@ def main() -> None:
     args = p.parse_args()
     if args.action == "run-batch":
         queued = []
-        for event in run_live_batch_stream(k=args.k, team_niches=args.team_niches, team_size=args.team_size):
+        for event in run_live_batch_stream(
+            k=args.k,
+            team_niches=args.team_niches,
+            team_size=args.team_size,
+            manager_auto_publish=args.manager_auto_publish,
+            auto_publish_threshold=args.auto_publish_threshold,
+        ):
             if event["stage"] == "complete":
                 queued = event["queued"]
             else:

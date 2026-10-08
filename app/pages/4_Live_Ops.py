@@ -48,11 +48,11 @@ STAGE_NODES = [
     ("etsy_connect", "📡", "ETSY UPLINK"),
     ("trend", "📈", "TREND SCANNER"),
     ("prompt", "⌨️", "PROMPT FORGE"),
-    ("image_team", "🧑‍🤝‍🧑", "ART TEAM ASSEMBLY"),
-    ("image", "🖼️", "ART SYNTH // OPENAI"),
     ("compliance", "🛡️", "COMPLIANCE DAEMON"),
     ("mockup", "🧵", "MOCKUP RENDER"),
     ("pricing", "💠", "PRICE CORE"),
+    ("image_team", "🧑‍🤝‍🧑", "ART TEAM ASSEMBLY"),
+    ("image", "🖼️", "ART SYNTH // OPENAI"),
     ("etsy", "🛰️", "ETSY DEPLOY"),
     ("printful", "🏭", "PRINTFUL FAB LINK"),
 ]
@@ -124,6 +124,22 @@ with st.expander("🎨 Art team settings (multiple AI artists per trending niche
     )
     team_niches = st.number_input("Niches that get an art team", min_value=0, max_value=5, value=2)
     team_size = st.number_input("Artists per team (style variants)", min_value=1, max_value=5, value=3)
+with st.expander("🤖 Manager auto-publish (Dr. Cypher decides, you're the fallback)"):
+    st.caption(
+        "By default every design lands in Pending Approvals below and waits for you to click "
+        "'Approve & publish live'. Turn this on to let Dr. Cypher (the manager agent) publish "
+        "its own highest-confidence designs live on its own — anything below the confidence "
+        "threshold still falls back to you for manual review, exactly like today."
+    )
+    manager_auto_publish = st.checkbox("Let Dr. Cypher auto-publish high-confidence designs", value=False)
+    auto_publish_threshold = st.slider(
+        "Manager confidence score required to auto-publish",
+        min_value=0.5,
+        max_value=1.0,
+        value=0.85,
+        step=0.01,
+        disabled=not manager_auto_publish,
+    )
 run_clicked = st.button("▶ Run live batch (creates real Etsy DRAFT listings, not public)")
 
 console_slot = st.empty()
@@ -139,7 +155,13 @@ gallery: list = []
 if run_clicked:
     try:
         queued = []
-        for event in pipeline.run_live_batch_stream(k=int(k), team_niches=int(team_niches), team_size=int(team_size)):
+        for event in pipeline.run_live_batch_stream(
+            k=int(k),
+            team_niches=int(team_niches),
+            team_size=int(team_size),
+            manager_auto_publish=manager_auto_publish,
+            auto_publish_threshold=auto_publish_threshold,
+        ):
             if event["stage"] == "complete":
                 queued = event["queued"]
                 continue
@@ -165,6 +187,14 @@ if run_clicked:
         st.error(f"Live batch failed: {e}")
 
 st.markdown("---")
+auto_published = [e for e in pipeline.list_all() if e.get("published_by") == "manager"]
+if auto_published:
+    st.subheader("🤖 Auto-published by Dr. Cypher")
+    st.caption("These went live automatically — no human click — because the Manager's score met your threshold.")
+    for entry in auto_published[-10:]:
+        st.write(f"✅ **{entry['design_id']}** — {entry['niche']} (${entry['price']}) — listing_id={entry['etsy_listing_id']}")
+
+st.markdown("---")
 st.subheader("Pending approvals")
 pending = pipeline.list_pending()
 if not pending:
@@ -175,7 +205,7 @@ else:
             if entry.get("etsy_image_url"):
                 st.image(entry["etsy_image_url"], width=300)
             st.write(entry["prompt"])
-            st.caption(f"Etsy draft listing_id={entry['etsy_listing_id']}")
+            st.caption(f"Etsy draft listing_id={entry['etsy_listing_id']} — waiting on your review (below Dr. Cypher's auto-publish threshold)")
             col_a, col_r = st.columns(2)
             if col_a.button("Approve & publish live", key=f"approve_{entry['design_id']}"):
                 pipeline.approve_and_publish(entry["design_id"])
@@ -185,6 +215,39 @@ else:
                 pipeline.reject(entry["design_id"])
                 st.warning("Rejected.")
                 st.rerun()
+
+st.markdown("---")
+st.subheader("🖼️ Image archive")
+st.caption(
+    "Every real OpenAI image ever generated, including anything from before this batch, "
+    "with the Manager's score/decision when it's known. Nothing is ever deleted locally — "
+    "if a batch failed or a design never got approved, the art is still sitting right here "
+    "and the raw file is reusable."
+)
+archive = pipeline.list_image_archive()
+if not archive:
+    st.info("No images generated yet.")
+else:
+    st.caption(f"{len(archive)} image(s) on disk in data/images/.")
+    unscored = sum(1 for e in archive if e.get("manager_score") is None)
+    if unscored:
+        st.warning(
+            f"{unscored} of these were generated before score-tracking was added (or by a run that crashed "
+            "before completing) — no niche/score was recorded for them, so there's no way to know in "
+            "hindsight whether the Manager would've greenlit them. You can still open the files directly "
+            "in data/images/ and reuse any you like for a manual listing."
+        )
+    sorted_archive = sorted(archive, key=lambda e: (e.get("manager_score") is None, -(e.get("manager_score") or 0)))
+    cols = st.columns(4)
+    for i, entry in enumerate(sorted_archive):
+        with cols[i % 4]:
+            st.image(entry["image_uri"], use_container_width=True)
+            score = entry.get("manager_score")
+            decision = entry.get("manager_decision")
+            if score is not None:
+                st.caption(f"**{entry['design_id']}** — {entry.get('niche') or '?'}\nscore {score} ({decision})")
+            else:
+                st.caption(f"**{entry['design_id']}** — no score recorded")
 
 st.markdown("---")
 st.subheader("Order fulfillment sync")
