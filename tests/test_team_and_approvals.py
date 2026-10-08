@@ -80,3 +80,53 @@ def test_publish_reviewed_run_only_lists_approved_designs(tmp_path, monkeypatch)
     published = json.loads((tmp_path / result_path.split("/")[-1]).read_text(encoding="utf-8"))
     assert published["review_status"]["D3"] == "BLOCKED"
     assert [item["design_id"] for item in published["marketplace_listings"]] == ["D1", "D2"]
+
+
+def test_etsy_config_survives_team_pipeline(tmp_path, monkeypatch):
+    config = {
+        "niches": ["coffee culture"],
+        "product_types": ["tote"],
+        "target_margin": 0.5,
+        "fees": {"listing_fee": 0.2},
+    }
+    config_path = tmp_path / "etsy_config.json"
+    config_path.write_text(json.dumps(config))
+    monkeypatch.setattr(run_simulation, "ETSY_CONFIG_PATH", config_path)
+    monkeypatch.setattr(run_simulation, "DATA_DIR", tmp_path)
+    monkeypatch.setattr(run_simulation.EtsyConnector, "from_environment", lambda: None)
+    captured = []
+    monkeypatch.setattr(
+        run_simulation, "save_json",
+        lambda payload, name: captured.append(payload) or str(tmp_path / name),
+    )
+    fees_applied = []
+    apply_fees = run_simulation.apply_etsy_fees
+
+    def record_fees(designs, results, fees):
+        fees_applied.append(fees)
+        apply_fees(designs, results, fees)
+
+    monkeypatch.setattr(run_simulation, "apply_etsy_fees", record_fees)
+    run_simulation.run_once(etsy_mode=True)
+    payload = captured[0]
+    assert payload["etsy_config"] == config
+    assert fees_applied == [config["fees"]]
+    assert payload["team"]["assignments"]
+    assert payload["designs"]
+    assert all(d["product_type"] == "tote" for d in payload["designs"])
+    assert all((d["price"] - d["unit_cost"]) / d["price"] >= 0.5 for d in payload["designs"])
+
+
+def test_etsy_mode_without_config_keeps_mock_fallback(tmp_path, monkeypatch):
+    monkeypatch.setattr(run_simulation, "ETSY_CONFIG_PATH", tmp_path / "missing.json")
+    monkeypatch.setattr(run_simulation, "DATA_DIR", tmp_path)
+    monkeypatch.setattr(run_simulation.EtsyConnector, "from_environment", lambda: None)
+    captured = []
+    monkeypatch.setattr(
+        run_simulation, "save_json",
+        lambda payload, name: captured.append(payload) or str(tmp_path / name),
+    )
+    run_simulation.run_once(etsy_mode=True)
+    assert captured[0]["etsy_mode"]
+    assert captured[0]["etsy_config"] is None
+    assert captured[0]["research"]["source"] == "simulated"

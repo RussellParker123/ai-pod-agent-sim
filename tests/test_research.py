@@ -1,4 +1,5 @@
-from app.sim.agents import Design, pricing_agent, prompt_agent
+from app.live.catalog_map import PRODUCT_UNIT_COSTS
+from app.sim.agents import Design, mockup_agent, pricing_agent, prompt_agent
 from app.sim.research import apply_research, pricing_research_agent, research_agent
 
 
@@ -58,3 +59,10 @@ def test_pricing_agent_uses_market_reference_without_undercutting_margin():
     assert designs[0].price == 12
     assert designs[1].price == 10.84
     assert all((d.price - d.unit_cost) / d.price >= 0.4 for d in designs)
+
+
+def test_mockup_respects_configured_products_and_current_costs():
+    designs = [Design("D1", "coffee culture", 0.8)]
+    mockup_agent(designs, product_types=("tote",), preferred_product_types=["mug"])
+    assert designs[0].product_type == "tote"
+    assert designs[0].unit_cost == PRODUCT_UNIT_COSTS["tote"]
