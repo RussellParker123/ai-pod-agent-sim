@@ -50,7 +50,7 @@ def test_pricing_research_uses_median_usd_shop_prices_by_product():
 def test_pricing_agent_uses_market_reference_without_undercutting_margin():
     designs = [
         Design("D1", "coffee culture", 0.8, product_type="mug", unit_cost=6.5),
-        Design("D2", "coffee culture", 0.8, product_type="mug", unit_cost=6.5),
+        Design("D2", "coffee culture", 0.8, product_type="tote", unit_cost=6.5),
     ]
 
     pricing_agent(designs, target_margin=0.4, market_prices={"mug": 12})
