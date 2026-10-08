@@ -144,7 +144,7 @@ for r in shown:
                                                              for s in options if s["suggestion_id"] == sid))
             if a2.button("♻️ Request reuse", key=f"reuse_{rid}"):
                 _act(store.review, rid, "request_reuse", suggestion_id=pick)
-        if a3.button("🗄 Archive", key=f"arch_{rid}", disabled=r["status"] in (recycling.ARCHIVED, recycling.REENTERED)):
+        if a3.button("🗄 Archive", key=f"arch_{rid}", disabled=r["status"] in (recycling.ARCHIVED, recycling.REENTERED) or store.is_blocked_record(r)):
             _act(store.review, rid, "archive")
         if a4.button("🚫 Mark unusable", key=f"unus_{rid}",
                      disabled=r["status"] in (recycling.UNUSABLE, recycling.REENTERED)):

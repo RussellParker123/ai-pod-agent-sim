@@ -337,3 +337,22 @@ def test_stage_recycled_candidate_blocked_by_fresh_compliance(live_env, monkeypa
 def test_outcome_counts_groups():
     records = [{"status": s} for s in recycling.STATUSES]
     assert recycling.outcome_counts(records) == {"pending_reuse": 4, "quarantined": 1, "unusable": 2}
+
+
+def test_quarantine_is_sticky_and_cannot_be_archived_into_sellable(tmp_path):
+    store = recycling.RecyclingStore(tmp_path / "q.json")
+    design = {"design_id": "F1", "niche": "cozy cats", "product": "mug", "prompt": "p",
+              "image_uri": "sim://F1", "compliance_status": "flagged"}
+    rec, _ = store.enqueue(design, rejected_by="manager", reason="flagged", source="simulation", source_ref="r")
+    store.analyze(rec["record_id"], context={})
+    assert store.get(rec["record_id"])["status"] == recycling.QUARANTINED
+    try:
+        store.review(rec["record_id"], "archive")
+        assert False, "archiving a quarantined asset must be refused"
+    except recycling.RecyclingError:
+        pass
+    store.review(rec["record_id"], "mark_unusable")
+    assert store.is_blocked_image("sim://F1")
+    # even if a record's status were changed by hand, the recorded quarantine still blocks it
+    store.get(rec["record_id"])["status"] = recycling.ARCHIVED
+    assert store.is_blocked_image("sim://F1")

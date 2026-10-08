@@ -131,8 +131,15 @@ class RecyclingStore:
             out[r["status"]] = out.get(r["status"], 0) + 1
         return out
 
+    @staticmethod
+    def is_blocked_record(record: Dict) -> bool:
+        """Quarantine is sticky: a flagged/quarantined asset stays blocked whatever its later status."""
+        return (record["status"] in (QUARANTINED, UNUSABLE)
+                or bool((record.get("analysis") or {}).get("quarantine"))
+                or record.get("compliance_status") == "flagged")
+
     def is_blocked_image(self, image_uri: str) -> bool:
-        return any(r["image_uri"] == image_uri and r["status"] in (QUARANTINED, UNUSABLE) for r in self.records)
+        return any(r["image_uri"] == image_uri and self.is_blocked_record(r) for r in self.records)
 
     # --- intake -----------------------------------------------------------
     def enqueue(
@@ -235,6 +242,9 @@ class RecyclingStore:
                 return record
             if record["status"] == REENTERED:
                 raise RecyclingError("Candidate already re-entered the pipeline; reject it in Review instead")
+            if action == "archive" and self.is_blocked_record(record):
+                raise RecyclingError("Quarantined/unusable assets cannot be archived for later use; "
+                                     "mark them unusable instead")
             record["status"] = target
             record["history"].append({"at": _now(), "action": action, "by": reviewer, "note": note})
             return record
