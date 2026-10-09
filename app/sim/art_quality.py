@@ -32,7 +32,7 @@ DEFAULT_PRODUCTS = ("mug", "tshirt", "tote")
 
 PRINT_SPECS = {
     "mug": {
-        "print_area": "8.5 x 3.5 in wrap; keep the key art inside the central 3.5 x 3.5 in so it reads from one side",
+        "print_area": "8.5 x 3.5 in wrap; make a continuous left-to-right scene, keeping its key subject in the central 3.5 x 3.5 in safe area",
         "min_resolution": "2475 x 1155 px at 300 DPI",
         "background": "transparent or solid white (white glossy mug)",
         "max_words": 4,
@@ -111,11 +111,13 @@ STYLE_DIRECTIONS = [
     "retro screen-print with three spot colors",
     "single-weight line art",
     "geometric badge illustration",
+    "hand-painted watercolor with soft layered washes",
+    "warm folk-art gouache illustration",
 ]
 
 PALETTES = {
-    "cozy": "burnt orange, mustard, cream, deep brown",
-    "autumn": "burnt orange, mustard, cream, deep brown",
+    "cozy": "warm cream, amber, rust, soft moss green, dark evergreen",
+    "autumn": "maple gold, rust, muted moss green, warm cream, dark bark brown",
     "retro": "faded teal, sunset orange, mustard, dark navy",
     "vintage": "faded teal, sunset orange, mustard, dark navy",
     "minimalist": "near-black, off-white, one coral accent",
@@ -274,14 +276,22 @@ def build_brief(
         "motif": motif,
         "target_product": target,
         "allowed_products": list(product_types),
-        "composition": "one focal subject, centered, generous margin, readable at thumbnail size",
+        "composition": (
+            "continuous panoramic wrap scene with a clear focal subject in the central safe area, "
+            "supporting details flowing toward the sides, and no essential detail at the seam"
+            if target == "mug" else
+            "one focal subject, centered, generous margin, readable at thumbnail size"
+        ),
         "art_direction": (
             "Create polished, handcrafted giftable artwork rather than generic clip art. When the "
             "theme suits it, use a cozy storybook mood with layered watercolor or gouache texture, "
             "warm natural color harmony, and a few charming secondary details; adapt the finish to "
-            "the selected style and palette. Keep a clear focal hierarchy, distinctive silhouette, "
-            "generous negative space, and print-safe detail. Make standalone printable artwork, not "
-            "a product photo or mockup, and do not copy any reference design."
+            "the selected style and palette. For a mug wrap, build a coherent left-to-right scene "
+            "with a strong central focal point and lighter supporting detail toward the edges. Keep "
+            "a clear focal hierarchy, distinctive silhouette, deliberate negative space, and "
+            "print-safe detail. Make standalone printable artwork, not a product photo or mockup, "
+            "and never reproduce a reference's "
+            "specific characters, wording, or composition."
         ),
         "style": style,
         "palette": palette,

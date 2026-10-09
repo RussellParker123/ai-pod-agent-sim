@@ -30,6 +30,8 @@ def test_brief_is_structured_product_aware_and_research_fed():
                 "legibility", "print_constraints", "originality", "reviewer_feedback"):
         assert key in brief
     assert brief["target_product"] == "mug"  # best product-fit for coffee culture
+    assert "continuous panoramic wrap scene" in brief["composition"]
+    assert "watercolor" in brief["art_direction"] and "never reproduce" in brief["art_direction"]
     assert brief["research_signals"]["top_styles"] == ["retro"]
     assert "Print:" in d.prompt and "no logos" in d.prompt.lower()
     assert "distinctive silhouette" in d.prompt and "negative space" in d.prompt
