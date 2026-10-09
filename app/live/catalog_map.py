@@ -11,6 +11,11 @@ exact Printful blank products you choose to sell.
   against the Printful catalog API on 2026-10-08 (see values below).
 """
 
+import os
+import math
+
+from app.integrations.config import PRINTFUL_API_KEY
+
 # Etsy seller-taxonomy node ids, verified live against
 # GET /v3/application/seller-taxonomy/nodes on 2026-10-08:
 #   mug    -> 1062  = Home & Living > Kitchen & Dining > Drink & Barware > Drinkware > Mugs
@@ -81,3 +86,61 @@ PRODUCT_SHIP_DIMENSIONS = {
     "tshirt": {"item_weight": 6, "item_length": 12, "item_width": 9, "item_height": 1},
     "tote": {"item_weight": 8, "item_length": 15, "item_width": 16, "item_height": 1},
 }
+
+
+def _configured_int(name):
+    try:
+        return int(os.environ.get(name, ""))
+    except (TypeError, ValueError):
+        return None
+
+
+def _configured_float(name):
+    try:
+        value = float(os.environ.get(name, ""))
+    except (TypeError, ValueError):
+        return None
+    return value if math.isfinite(value) else None
+
+
+STICKER_TAXONOMY_ID = _configured_int("ETSY_STICKER_TAXONOMY_ID")
+STICKER_PRINTFUL_PRODUCT_ID = _configured_int("PRINTFUL_STICKER_PRODUCT_ID")
+STICKER_PRINTFUL_VARIANT_ID = _configured_int("PRINTFUL_STICKER_VARIANT_ID")
+STICKER_UNIT_COST = _configured_float("PRINTFUL_STICKER_UNIT_COST")
+STICKER_SHIP_DIMENSIONS = {
+    "item_weight": _configured_float("STICKER_SHIP_WEIGHT_OZ"),
+    "item_length": _configured_float("STICKER_SHIP_LENGTH_IN"),
+    "item_width": _configured_float("STICKER_SHIP_WIDTH_IN"),
+    "item_height": _configured_float("STICKER_SHIP_HEIGHT_IN"),
+}
+
+if STICKER_TAXONOMY_ID:
+    PRODUCT_TAXONOMY["sticker"] = STICKER_TAXONOMY_ID
+if STICKER_PRINTFUL_VARIANT_ID:
+    PRODUCT_PRINTFUL_VARIANT["sticker"] = STICKER_PRINTFUL_VARIANT_ID
+if STICKER_PRINTFUL_PRODUCT_ID:
+    PRODUCT_PRINTFUL_PRODUCT["sticker"] = STICKER_PRINTFUL_PRODUCT_ID
+if STICKER_UNIT_COST is not None and STICKER_UNIT_COST > 0:
+    PRODUCT_UNIT_COSTS["sticker"] = STICKER_UNIT_COST
+if all(value is not None and value > 0 for value in STICKER_SHIP_DIMENSIONS.values()):
+    PRODUCT_SHIP_DIMENSIONS["sticker"] = STICKER_SHIP_DIMENSIONS
+PRODUCT_CATALOG_DETAILS["sticker"] = {"name": "Die-Cut Sticker", "size": "Printful sticker"}
+
+
+def sticker_configuration_errors() -> list:
+    required = {
+        "PRINTFUL_API_KEY": PRINTFUL_API_KEY,
+        "ETSY_STICKER_TAXONOMY_ID": STICKER_TAXONOMY_ID,
+        "PRINTFUL_STICKER_PRODUCT_ID": STICKER_PRINTFUL_PRODUCT_ID,
+        "PRINTFUL_STICKER_VARIANT_ID": STICKER_PRINTFUL_VARIANT_ID,
+        "PRINTFUL_STICKER_UNIT_COST": STICKER_UNIT_COST,
+        "STICKER_SHIP_WEIGHT_OZ": STICKER_SHIP_DIMENSIONS["item_weight"],
+        "STICKER_SHIP_LENGTH_IN": STICKER_SHIP_DIMENSIONS["item_length"],
+        "STICKER_SHIP_WIDTH_IN": STICKER_SHIP_DIMENSIONS["item_width"],
+        "STICKER_SHIP_HEIGHT_IN": STICKER_SHIP_DIMENSIONS["item_height"],
+    }
+    return [
+        name for name, value in required.items()
+        if value is None or (isinstance(value, str) and not value)
+        or (isinstance(value, (int, float)) and value <= 0)
+    ]

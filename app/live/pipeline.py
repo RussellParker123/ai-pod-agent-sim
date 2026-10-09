@@ -13,7 +13,7 @@ from __future__ import annotations
 import argparse
 import copy
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, List, Optional
 
@@ -28,9 +28,11 @@ from app.live.catalog_map import (
     PRODUCT_SHIP_DIMENSIONS,
     PRODUCT_TAXONOMY,
     PRODUCT_UNIT_COSTS,
+    sticker_configuration_errors,
 )
 from app.live.gpt_agents import prompt_agent_live, trend_agent_live
 from app.sim import recycling
+from app.sim import sticker_team
 from app.sim.agents import Design, compliance_agent, mockup_agent, pricing_agent
 from app.sim.art_quality import assess_concept, assess_generated_image, refine_designs, revise_for_compliance
 from app.sim.manager import ManagerAgent
@@ -768,6 +770,89 @@ def stage_recycled_candidate(record_id: str) -> dict:
     pending.append(entry)
     _save_pending(pending)
     store.mark_reentered(record_id, "live:etsy_draft", dict(gates, human_approval="pending (Live Ops)"))
+    store.save()
+    return {"status": "staged", "gates": gates, "entry": entry}
+
+
+def stage_recycled_sticker(record_id: str) -> dict:
+    """Create a Printful-backed Etsy draft after recycler-team and agent approval."""
+    store = _recycling_store()
+    record = store.get(record_id)
+    workflow = record.get("sticker_workflow") or {}
+    if workflow.get("status") == "staged":
+        entry = next((e for e in _load_pending() if e.get("recycling_record_id") == record_id), None)
+        return {"status": "already_staged", "entry": entry, "record": record}
+    if workflow.get("status") != "approved" or not (workflow.get("dr_cypher") or {}).get("approved"):
+        raise ValueError("The recycler team, overseer, and Dr. Cypher must approve this photo first.")
+    if store.is_blocked_record(record):
+        raise ValueError("Quarantined or unusable images cannot be made into stickers.")
+    if recycling.safe_image_path(record["image_uri"], IMAGES_DIR) is None:
+        raise ValueError("Original image file is missing or outside data/images.")
+    missing = sticker_configuration_errors()
+    if missing:
+        raise ValueError("Configure these sticker product settings before staging: " + ", ".join(missing))
+    if not printful_client.is_configured():
+        raise ValueError("Set PRINTFUL_API_KEY before creating a Printful sticker product.")
+
+    design_id = f"{record['source_design_id']}-STICKER-{record_id[3:9]}"
+    if any(e.get("design_id") == design_id for e in _load_pending()):
+        raise ValueError(f"design_id={design_id!r} has already been staged.")
+    config = load_etsy_config()
+    original = record.get("original") or {}
+    design = Design(
+        design_id=design_id,
+        niche=original.get("niche") or "recycled art",
+        trend_score=float(original.get("trend_score") or 0.5),
+        prompt=original.get("prompt") or f"Die-cut sticker from recycled artwork {record['source_design_id']}",
+        image_uri=record["image_uri"],
+        compliance_status="pending",
+        product_type="sticker",
+        unit_cost=PRODUCT_UNIT_COSTS["sticker"],
+        parent_design_id=record["source_design_id"],
+        lineage={"recycled_from": record_id, "product": "die_cut_sticker"},
+        brief=original.get("brief") or {},
+    )
+    compliance_agent([design])
+    design.quality["concept"] = assess_concept(design)
+    pricing_agent([design], target_margin=config.get("target_margin", 0.42))
+    manager = ManagerAgent()
+    manager.review_pricing([design])
+    manager.score_and_decide([design])
+    decision = manager.score_for(design).get("manager_decision", "BLOCK")
+    gates = {
+        "compliance": design.compliance_status,
+        "quality": design.quality["concept"]["status"],
+        "pricing": f"${design.price:.2f}",
+        "manager": decision,
+    }
+    if decision == "BLOCK":
+        workflow.update(status="rejected", production_gates=gates)
+        record["sticker_workflow"] = workflow
+        record["history"].append({
+            "at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+            "action": "sticker_production_blocked", "by": "system",
+            "note": f"Fresh production gates blocked this candidate: {gates}",
+        })
+        store.save()
+        return {"status": "blocked", "gates": gates, "record": record}
+
+    entry = _stage_design(design, _get_shop_context())
+    entry.update(
+        published_by=None,
+        source="recycling_sticker",
+        recycling_record_id=record_id,
+        production_gates=gates,
+    )
+    pending = _load_pending()
+    pending.append(entry)
+    _save_pending(pending)
+    workflow.update(status="staged", production_gates=gates, design_id=design_id)
+    record["sticker_workflow"] = workflow
+    record["history"].append({
+        "at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "action": "sticker_draft_staged", "by": "system",
+        "note": f"{design_id} queued as an Etsy draft; human publishing approval is still required.",
+    })
     store.save()
     return {"status": "staged", "gates": gates, "entry": entry}
 
