@@ -5,7 +5,6 @@ Nothing on this page auto-runs on page load except read-only status checks.
 Every action that spends money or goes public requires an explicit button
 click here.
 """
-import html
 import sys
 import time
 from pathlib import Path
@@ -23,14 +22,50 @@ if str(_REPO_ROOT) not in sys.path:
 from app.integrations import etsy_auth, openai_image, printful_client
 from app.integrations.config import NotConfiguredError
 from app.live import order_sync, pipeline
+from app.live_ops_presentation import (
+    MANAGER_NODE,
+    STAGE_NODES,
+    render_live_console,
+    registry_counts,
+    stage_status,
+    entry_status,
+)
 
 st.title("Live Ops")
+st.markdown(
+    """<style>
+    .stApp{background:linear-gradient(135deg,#0a0e27 0%,#1a1a3e 60%,#2d1b4e 100%);color:#e7f0ff}
+    [data-testid="stSidebar"]{background:linear-gradient(135deg,#0a0e27,#1a1a3e);border-right:1px solid #00ff41}
+    h1,h2,h3{color:#8cffaa;text-shadow:0 0 8px #00ff4159}
+    [data-testid="metric-container"]{background:linear-gradient(135deg,#1a1a3e,#2d1b4e);
+      border:1px solid #00ccff;border-radius:12px;padding:12px;box-shadow:0 0 12px #00ccff26}
+    .live-hero{background:linear-gradient(135deg,#0a0e27,#1a1a3e 55%,#2d1b4e);border:2px solid #00ff41;
+      border-radius:16px;padding:18px;text-align:center;box-shadow:0 0 22px #00ff4133;margin:4px 0 16px}
+    .live-hero h2{margin:0;color:#00ff41;letter-spacing:clamp(1px,.5vw,4px)}
+    .live-hero p{color:#00ccff;margin:8px 0 0}
+    .cypher-panel{background:linear-gradient(135deg,#2d1b4e,#1a2d4e);border:2px solid #ff6b9d;
+      border-radius:14px;padding:12px 16px;margin:10px 0 16px;text-align:center;box-shadow:0 0 16px #ff6b9d33}
+    .cypher-panel strong{color:#ff6b9d}
+    @media(prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;scroll-behavior:auto!important}}
+    </style>
+    <div class="live-hero"><h2>🎮 LIVE OPS ARENA 🎮</h2>
+    <p>LIVE ETSY OPERATIONS · REAL STORE EVENTS, NOT A SIMULATION REPLAY</p></div>
+    <div class="cypher-panel"><strong>🧪 DR. CYPHER · LIVE OPERATIONS OVERSEER</strong><br>
+    Console states and registry counts are shown only when supported by actual live events or saved records.</div>""",
+    unsafe_allow_html=True,
+)
 
 st.subheader("Connection status")
 c1, c2, c3 = st.columns(3)
 c1.metric("Etsy shop", "Connected" if etsy_auth.is_connected() else "Not connected")
 c2.metric("OpenAI (art)", "Configured" if openai_image.is_configured() else "Not configured")
 c3.metric("Printful (fulfillment)", "Configured" if printful_client.is_configured() else "Not configured")
+
+st.warning(
+    "LIVE Etsy work: image generation may spend money. Creating a listing draft does not publish it publicly. "
+    "If Manager auto-publish is enabled below, qualifying listings can be published automatically. "
+    "Paid-order sync may initiate Printful fulfillment. No action runs on page load; use the explicit controls below."
+)
 
 if not etsy_auth.is_connected():
     st.info(
@@ -39,82 +74,8 @@ if not etsy_auth.is_connected():
     )
     st.stop()
 
-# --- Cyberpunk ops console --------------------------------------------------
-# Same agents as the simulation's "Office" page (app/sim/agents.py,
-# app/sim/manager.py), driven live by app.live.pipeline.run_live_batch_stream()
-# — the only differences from simulation are real OpenAI art generation and
-# two extra real-world stages (deploying to Etsy, syncing to Printful).
-MANAGER_NODE = ("manager", "🧠", "MANAGER AI — CALL SIGN: DR. CYPHER")
-STAGE_NODES = [
-    ("etsy_connect", "📡", "ETSY UPLINK"),
-    ("trend", "📈", "TREND SCANNER"),
-    ("prompt", "⌨️", "PROMPT FORGE"),
-    ("compliance", "🛡️", "COMPLIANCE DAEMON"),
-    ("mockup", "🧵", "MOCKUP RENDER"),
-    ("pricing", "💠", "PRICE CORE"),
-    ("image_team", "🧑‍🤝‍🧑", "ART TEAM ASSEMBLY"),
-    ("image", "🖼️", "ART SYNTH // OPENAI"),
-    ("etsy", "🛰️", "ETSY DEPLOY"),
-    ("printful", "🏭", "PRINTFUL FAB LINK"),
-]
-
-CYBER_CSS = """
-<style>
-  .cyber-wrap{background:#05060a;border:1px solid #1d2a33;border-radius:10px;padding:16px;
-    font-family:'Courier New',monospace;
-    background-image:
-      linear-gradient(rgba(0,255,242,.04) 1px, transparent 1px),
-      linear-gradient(90deg, rgba(0,255,242,.04) 1px, transparent 1px);
-    background-size:24px 24px;}
-  .cyber-title{color:#00fff2;letter-spacing:3px;font-size:13px;margin-bottom:10px;
-    text-shadow:0 0 6px #00fff2aa;}
-  .command-deck{display:flex;justify-content:center;margin-bottom:14px;}
-  .command-deck .node{width:280px;border-width:2px;padding:14px 6px;}
-  .command-deck .node .icon{font-size:30px;}
-  .command-deck .node .label{font-size:11px;letter-spacing:1.5px;}
-  .cyber-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:12px;}
-  .node{border:1px solid #2a3b44;border-radius:8px;padding:10px 6px;text-align:center;
-    background:rgba(10,14,20,.8);transition:all .25s;}
-  .node .icon{font-size:22px;}
-  .node .label{font-size:10px;color:#6fa3ad;letter-spacing:1px;margin-top:4px;}
-  .node .dot{display:inline-block;width:7px;height:7px;border-radius:50%;margin-top:6px;background:#2a3b44;}
-  .node.active{border-color:#ff2bd6;box-shadow:0 0 14px 2px #ff2bd699;animation:pulse 0.9s infinite;}
-  .node.active .label{color:#ff6bf0;}
-  .node.active .dot{background:#ff2bd6;box-shadow:0 0 8px 2px #ff2bd6;}
-  .node.done{border-color:#00ff8c;}
-  .node.done .label{color:#5effc0;}
-  .node.done .dot{background:#00ff8c;box-shadow:0 0 6px 1px #00ff8c;}
-  @keyframes pulse{0%,100%{transform:scale(1)}50%{transform:scale(1.04)}}
-  .term{background:#000;border:1px solid #1d2a33;border-radius:6px;padding:8px 10px;height:150px;
-    overflow-y:auto;font-size:12px;color:#00ff8c;}
-  .term .line{opacity:.9;}
-  .term .line.active{color:#ff6bf0;}
-</style>
-"""
-
-
-def _node_html(key: str, icon: str, label: str, stage_state: dict) -> str:
-    cls = "node " + stage_state.get(key, "idle")
-    return f'<div class="{cls}"><div class="icon">{icon}</div><div class="label">{label}</div><div class="dot"></div></div>'
-
-
-def _cyber_html(stage_state: dict, log_lines: list) -> str:
-    mgr = _node_html(*MANAGER_NODE, stage_state)
-    nodes = "".join(_node_html(key, icon, label, stage_state) for key, icon, label in STAGE_NODES)
-    log_html = "".join(f'<div class="line">{line}</div>' for line in log_lines) or '<div class="line">&gt; standing by...</div>'
-    return (
-        CYBER_CSS
-        + '<div class="cyber-wrap">'
-        + '<div class="cyber-title">⚡ NEURALARTTREASURES // LIVE OPS CONSOLE ⚡</div>'
-        + f'<div class="command-deck">{mgr}</div>'
-        + f'<div class="cyber-grid">{nodes}</div>'
-        + f'<div class="term">{log_html}</div>'
-        + "</div>"
-    )
-
-
 st.markdown("---")
-st.subheader("Live Agent Pipeline")
+st.subheader("Live Agent Pipeline · Event-Driven Operations Console")
 k = st.number_input("How many designs to queue", min_value=1, max_value=20, value=6)
 with st.expander("🎨 Art team settings (multiple AI artists per trending niche)"):
     st.caption(
@@ -147,13 +108,14 @@ console_slot = st.empty()
 stage_state = {key: "idle" for key, _, _ in STAGE_NODES + [MANAGER_NODE]}
 log_lines: list = []
 with console_slot:
-    components.html(_cyber_html(stage_state, log_lines), height=380)
+    components.html(render_live_console(stage_state, log_lines), height=480, scrolling=True)
 
 st.caption("🖼️ Live art feed — thumbnails appear here the instant each artist agent finishes a piece.")
 gallery_slot = st.empty()
 gallery: list = []
 
 if run_clicked:
+    active_stage = None
     try:
         queued = []
         for event in pipeline.run_live_batch_stream(
@@ -166,10 +128,15 @@ if run_clicked:
             if event["stage"] == "complete":
                 queued = event["queued"]
                 continue
-            stage_state[event["stage"]] = event["status"]
-            log_lines.append(f"&gt; [{html.escape(str(event['stage']))}] {html.escape(str(event['message']))}")
+            stage = str(event["stage"])
+            if stage in stage_state:
+                stage_state[stage] = stage_status({stage: event.get("status")}, stage)
+                active_stage = stage if stage_state[stage] == "active" else (
+                    None if active_stage == stage else active_stage
+                )
+            log_lines.append(f"> [{stage}] {event['message']}")
             with console_slot:
-                components.html(_cyber_html(stage_state, log_lines[-10:]), height=380)
+                components.html(render_live_console(stage_state, log_lines[-10:]), height=480, scrolling=True)
 
             image_uri = event.get("image_uri")
             if image_uri and not image_uri.startswith("sim://") and Path(image_uri).exists():
@@ -183,17 +150,58 @@ if run_clicked:
             time.sleep(0.25)  # just pacing for readability — every event above is real work already done
         st.success(f"Queued {len(queued)} design(s) for approval.")
     except NotConfiguredError as e:
+        if active_stage:
+            stage_state[active_stage] = "error"
+            with console_slot:
+                components.html(render_live_console(stage_state, log_lines[-10:]), height=480, scrolling=True)
         st.error(str(e))
     except Exception as e:  # noqa: BLE001 - surface any live-pipeline error to the operator
+        if active_stage:
+            stage_state[active_stage] = "error"
+            with console_slot:
+                components.html(render_live_console(stage_state, log_lines[-10:]), height=480, scrolling=True)
         st.error(f"Live batch failed: {e}")
 
 st.markdown("---")
-auto_published = [e for e in pipeline.list_all() if e.get("published_by") == "manager"]
+live_entries = pipeline.list_all()
+auto_published = [e for e in live_entries if e.get("published_by") == "manager"]
 if auto_published:
     st.subheader("🤖 Auto-published by Dr. Cypher")
     st.caption("These went live automatically — no human click — because the Manager's score met your threshold.")
     for entry in auto_published[-10:]:
         st.write(f"✅ **{entry['design_id']}** — {entry['niche']} (${entry['price']}) — listing_id={entry['etsy_listing_id']}")
+
+st.markdown("---")
+st.subheader("📋 Live listing registry")
+st.caption(
+    "Read-only summary of locally saved live pipeline records. Draft, published, and rejected labels come "
+    "from each stored record; listing prices are not sales and no revenue/profit is reported here."
+)
+status_counts = registry_counts(live_entries)
+registry_cols = st.columns(4)
+registry_cols[0].metric("📝 Drafts · awaiting review", status_counts["drafts"])
+registry_cols[1].metric("🌐 Published", status_counts["published"])
+registry_cols[2].metric("⛔ Rejected", status_counts["rejected"])
+registry_cols[3].metric("📦 Recorded entries", len(live_entries))
+if not live_entries:
+    st.info("No live listing records have been saved yet.")
+else:
+    for entry in reversed(live_entries):
+        design_id = str(entry.get("design_id") or "Design")
+        niche = str(entry.get("niche") or "Niche not recorded")
+        product_type = str(entry.get("product_type") or "Product not recorded")
+        with st.expander(f"{design_id} · {entry_status(entry)} · {niche} ({product_type})"):
+            st.caption(f"Status: {entry_status(entry)}")
+            if entry.get("etsy_listing_id") is not None:
+                st.caption(f"Etsy listing ID: {entry['etsy_listing_id']}")
+            if entry.get("published_by"):
+                st.caption(f"Published by: {entry['published_by']}")
+            if entry.get("manager_score") is not None:
+                st.caption(f"Recorded manager score: {entry['manager_score']}")
+            if entry.get("compliance_status"):
+                st.caption(f"Recorded compliance status: {entry['compliance_status']}")
+            if entry.get("rejection_reason"):
+                st.caption(f"Recorded rejection reason: {entry['rejection_reason']}")
 
 st.markdown("---")
 st.subheader("Pending approvals")
