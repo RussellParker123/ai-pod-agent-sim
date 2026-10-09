@@ -56,10 +56,20 @@ def research_agent(
     source = "simulated"
     if etsy_connector:
         try:
-            sellers = etsy_connector.get_best_sellers(limit=limit)
-            source = "etsy"
+            search_marketplace = getattr(etsy_connector, "get_marketplace_listings", None)
+            if search_marketplace:
+                sellers = search_marketplace(niches, limit=limit)
+                if sellers:
+                    source = "etsy_marketplace"
         except Exception as exc:
-            LOGGER.warning("Etsy best sellers unavailable; simulating: %s", exc)
+            LOGGER.warning("Etsy marketplace research unavailable: %s", exc)
+        if not sellers:
+            try:
+                sellers = etsy_connector.get_best_sellers(limit=limit)
+                if sellers:
+                    source = "etsy"
+            except Exception as exc:
+                LOGGER.warning("Etsy shop research unavailable: %s", exc)
     if not sellers:
         sellers, source = _simulated_sellers(niches), "simulated"
 

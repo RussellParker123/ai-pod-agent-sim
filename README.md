@@ -56,6 +56,10 @@ compliance behavior. Etsy API request logs are written to
 `data/etsy_api.log`. Etsy's public API does not expose shop search-query
 analytics or reasons for delisting, so trend terms are derived from active
 listing tags and inactive listings are used only as similarity references.
+When connected, research also searches active Etsy marketplace listings for
+configured niches and uses listing views/favorites as an imperfect demand proxy.
+Those listings provide high-level style and product inspiration only; their
+artwork, wording, and compositions are not copied into generated prompts.
 
 Pricing research uses the median USD price of matching products in your own
 active shop listings as a reference, when available. It is not competitor

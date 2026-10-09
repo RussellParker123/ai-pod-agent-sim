@@ -123,6 +123,7 @@ DEFAULT_PALETTE = "3-4 flat colors with one dark anchor color"
 
 ORIGINALITY_GUARDRAILS = [
     "original artwork only",
+    "use market trends only as high-level inspiration; do not reproduce existing artwork, wording or composition",
     "no logos, brand names or trademarked phrases",
     "no existing characters, celebrities or franchise references",
     "do not imitate a named living artist",

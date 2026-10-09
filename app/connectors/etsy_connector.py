@@ -211,6 +211,44 @@ class EtsyConnector:
         ranked.sort(key=lambda item: -item["demand"])
         return ranked[:limit]
 
+    def get_marketplace_listings(self, niches, limit=10):
+        """Search Etsy's active marketplace listings for high-level inspiration."""
+        listings_by_id = {}
+        for niche in dict.fromkeys(str(n).strip() for n in niches if str(n).strip()):
+            response = self._get(
+                "listings/active",
+                {
+                    "keywords": niche,
+                    "sort_on": "score",
+                    "sort_order": "desc",
+                    "limit": min(max(int(limit), 1), 100),
+                },
+            )
+            for listing in response.get("results", []):
+                listing_id = listing.get("listing_id")
+                views = int(listing.get("views") or 0)
+                favorites = int(listing.get("num_favorers") or 0)
+                item = {
+                    "listing_id": listing_id,
+                    "title": listing.get("title", ""),
+                    "tags": listing.get("tags", []),
+                    "views": views,
+                    "favorites": favorites,
+                    "demand": favorites * 5 + views,
+                }
+                key = listing_id if listing_id is not None else (
+                    item["title"], tuple(item["tags"])
+                )
+                previous = listings_by_id.get(key)
+                if previous is None or item["demand"] > previous["demand"]:
+                    listings_by_id[key] = item
+
+        ranked = sorted(
+            listings_by_id.values(),
+            key=lambda item: (-item["demand"], str(item["title"]).lower()),
+        )
+        return ranked[: max(0, int(limit))]
+
     def get_historical_flagged_items(self):
         """Return inactive listings as compliance references.
 
