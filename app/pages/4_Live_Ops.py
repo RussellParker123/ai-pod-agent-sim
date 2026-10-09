@@ -1,9 +1,10 @@
 """Live Ops page: connection status, pending approvals, and the human
 approval gate for publishing real Etsy listings / syncing real orders.
 
-Nothing on this page auto-runs on page load except read-only status checks.
-Every action that spends money or goes public requires an explicit button
-click here.
+Nothing on this page auto-runs on page load except read-only status checks
+and reading locally saved records. Every action that spends money, goes
+public or calls Etsy requires an explicit button click here. Locally saved
+records stay visible even when Etsy is not connected.
 """
 import sys
 import time
@@ -21,7 +22,7 @@ if str(_REPO_ROOT) not in sys.path:
 
 from app.integrations import etsy_auth, openai_image, printful_client
 from app.integrations.config import NotConfiguredError
-from app.live import order_sync, pipeline
+from app.live import ops_state, order_sync, pipeline, recovery
 from app.live_ops_presentation import (
     MANAGER_NODE,
     STAGE_NODES,
@@ -32,6 +33,8 @@ from app.live_ops_presentation import (
     entry_status,
 )
 from app.sim.characters import DrCypher
+
+pipeline_recovery_note = recovery.RECOVERY_NOTE
 
 st.title("Live Ops")
 st.markdown(
@@ -58,8 +61,10 @@ st.markdown(
 )
 
 st.subheader("Connection status")
+etsy_connected = etsy_auth.is_connected()
 c1, c2, c3 = st.columns(3)
-c1.metric("Etsy shop", "Connected" if etsy_auth.is_connected() else "Not connected")
+c1.metric("Etsy shop", "Connected" if etsy_connected else "Not connected",
+          help="Based on a saved OAuth token file; the token is only verified with Etsy when you run an action.")
 c2.metric("OpenAI (art)", "Configured" if openai_image.is_configured() else "Not configured")
 c3.metric("Printful (fulfillment)", "Configured" if printful_client.is_configured() else "Not configured")
 
@@ -69,12 +74,32 @@ st.warning(
     "Paid-order sync may initiate Printful fulfillment. No action runs on page load; use the explicit controls below."
 )
 
-if not etsy_auth.is_connected():
+if not etsy_connected:
     st.info(
         "Connect your Etsy shop first:\n\n"
-        "    python -m app.setup.etsy_wizard --connect-etsy"
+        "    python -m app.setup.etsy_wizard --connect-etsy\n\n"
+        "Actions that need Etsy (running a batch, publishing, staging drafts, order sync, Etsy reconciliation) "
+        "are disabled until then. Your locally saved registry, image archive and recorded console history are "
+        "still shown below."
     )
-    st.stop()
+
+
+def _read_local(label, fn, default):
+    """Read local records; on failure show a diagnostic instead of crashing
+    or silently pretending the records are empty."""
+    try:
+        return fn(), None
+    except pipeline.LocalStoreError as e:
+        st.error(f"{label}: {e}")
+        return default, str(e)
+
+
+live_entries, registry_error = _read_local("Live listing registry", pipeline.list_all, [])
+recorded_state, state_error = ops_state.load_state()
+if state_error:
+    st.error(state_error)
+restored = ops_state.restored_view(recorded_state) if recorded_state else None
+batch_running_here = bool(restored and restored["running_here"])
 
 st.markdown("---")
 st.subheader("Live Agent Pipeline · Event-Driven Operations Console")
@@ -104,23 +129,78 @@ with st.expander("🤖 Manager auto-publish (Dr. Cypher decides, you're the fall
         step=0.01,
         disabled=not manager_auto_publish,
     )
-run_clicked = st.button("▶ Run live batch (creates real Etsy DRAFT listings, not public)")
+run_blockers = []
+if not etsy_connected:
+    run_blockers.append("Etsy is not connected.")
+if registry_error:
+    run_blockers.append("the local listing registry can't be read (see the error above).")
+if batch_running_here:
+    run_blockers.append("a batch is already recorded as running in another session of this server.")
+if restored and restored["batch"] and restored["batch"].get("display_status") == ops_state.INTERRUPTED:
+    st.warning(
+        "The last recorded batch was interrupted and has NOT been resumed or re-run. Before starting a new batch, "
+        "check the registry below for drafts marked 'staging incomplete' (and your Etsy drafts) so you don't "
+        "duplicate work. A new batch generates new designs; it never replays the old one."
+    )
+run_clicked = st.button(
+    "▶ Run live batch (creates real Etsy DRAFT listings, not public)",
+    disabled=bool(run_blockers),
+    help=("Disabled: " + " ".join(run_blockers)) if run_blockers else None,
+)
 
 console_slot = st.empty()
 stage_state = {key: "idle" for key, _, _ in STAGE_NODES + [MANAGER_NODE]}
 log_lines: list = []
 cypher_state = DrCypher().to_dict()
 cypher_state["status"] = "idle"
-with console_slot:
-    components.html(render_live_console(stage_state, log_lines, cypher_state), height=560, scrolling=True)
+if restored and not run_clicked:
+    batch = restored["batch"] or {}
+    if batch:
+        status_text = {
+            ops_state.COMPLETE: "completed",
+            ops_state.FAILED: "failed",
+            ops_state.INTERRUPTED: "was interrupted (server restart, page reload/stop, or crash) — not running",
+            ops_state.RUNNING: "is running in another session of this server — this is a snapshot",
+        }.get(batch.get("display_status"), "has an unknown status")
+        detail = f" Queued {batch['queued_count']} design(s)." if batch.get("queued_count") is not None else ""
+        error = f" Recorded error: {batch['error']}" if batch.get("error") else ""
+        st.info(
+            f"📼 Showing recorded history from disk, not live activity. Last batch {batch.get('batch_id')} "
+            f"(started {batch.get('started_at')}) {status_text}.{detail}{error}"
+        )
+    with console_slot:
+        components.html(
+            render_live_console(restored["stage_state"], restored["log_lines"][-10:], restored["cypher"], recorded=True),
+            height=560,
+            scrolling=True,
+        )
+else:
+    with console_slot:
+        components.html(render_live_console(stage_state, log_lines, cypher_state), height=560, scrolling=True)
 
 st.caption("🖼️ Live art feed — thumbnails appear here the instant each artist agent finishes a piece.")
 gallery_slot = st.empty()
 gallery: list = []
+if restored and restored["gallery"] and not run_clicked:
+    with gallery_slot.container():
+        st.caption("Recorded art feed from the last batch (files on disk, not new activity).")
+        recent = restored["gallery"][-6:]
+        cols = st.columns(len(recent))
+        for col, item in zip(cols, recent):
+            if item["image_uri"]:
+                col.image(item["image_uri"], caption=item["design_id"], width=110)
+            else:
+                col.caption(f"{item['design_id']}: image file missing")
 
 if run_clicked:
     active_stage = None
+    recorder = None
     try:
+        recorder = ops_state.BatchRecorder(params={
+            "k": int(k), "team_niches": int(team_niches), "team_size": int(team_size),
+            "manager_auto_publish": bool(manager_auto_publish),
+            "auto_publish_threshold": float(auto_publish_threshold),
+        })
         queued = []
         for event in pipeline.run_live_batch_stream(
             k=int(k),
@@ -129,10 +209,25 @@ if run_clicked:
             manager_auto_publish=manager_auto_publish,
             auto_publish_threshold=auto_publish_threshold,
         ):
-            if event["stage"] == "complete":
-                queued = event["queued"]
-                continue
             stage = str(event["stage"])
+            if stage == "complete":
+                queued = event["queued"]
+                for key, value in stage_state.items():
+                    if value == "active":
+                        stage_state[key] = "done"
+                cypher_state["status"] = "done"
+                cypher_state["activity"] = "Live batch complete"
+                cypher_state["location"] = cypher_state["home"]
+                message = f"Live batch complete — {len(queued)} design(s) saved to the registry."
+                log_lines.append(f"> [complete] {message}")
+                recorder.record({"stage": "complete", "status": "done", "message": message}, stage_state, cypher_state)
+                with console_slot:
+                    components.html(
+                        render_live_console(stage_state, log_lines[-10:], cypher_state),
+                        height=560,
+                        scrolling=True,
+                    )
+                continue
             if stage in stage_state:
                 stage_state[stage] = stage_status({stage: event.get("status")}, stage)
                 active_stage = stage if stage_state[stage] == "active" else (
@@ -140,12 +235,9 @@ if run_clicked:
                 )
             if isinstance(event.get("character"), dict):
                 cypher_state.update(DrCypher.from_dict(event["character"]).to_dict())
-            cypher_state["status"] = "done" if stage == "complete" else "active"
+            cypher_state["status"] = "active"
             cypher_state["location"] = STAGE_LOCATIONS.get(stage, cypher_state["location"])
-            if stage == "complete":
-                cypher_state["activity"] = "Live batch complete"
-                cypher_state["location"] = cypher_state["home"]
-            elif not isinstance(event.get("character"), dict):
+            if not isinstance(event.get("character"), dict):
                 cypher_state["activity"] = str(event.get("message", ""))
                 cypher_state["line"] = cypher_state["activity"]
             log_lines.append(f"> [{stage}] {event['message']}")
@@ -157,7 +249,11 @@ if run_clicked:
                 )
 
             image_uri = event.get("image_uri")
+            gallery_item = None
             if image_uri and not image_uri.startswith("sim://") and Path(image_uri).exists():
+                gallery_item = {"design_id": str(event["design_id"]), "image_uri": str(image_uri)}
+            recorder.record(event, stage_state, cypher_state, gallery_item)
+            if gallery_item:
                 gallery.append((event["design_id"], image_uri))
                 with gallery_slot:
                     recent = gallery[-6:]
@@ -166,6 +262,7 @@ if run_clicked:
                         col.image(path, caption=design_id, width=110)
 
             time.sleep(0.25)  # just pacing for readability — every event above is real work already done
+        recorder.finish(ops_state.COMPLETE, queued_count=len(queued), stage_state=stage_state, cypher=cypher_state)
         st.success(f"Queued {len(queued)} design(s) for approval.")
     except NotConfiguredError as e:
         cypher_state.update(
@@ -182,6 +279,8 @@ if run_clicked:
                     height=560,
                     scrolling=True,
                 )
+        if recorder:
+            recorder.finish(ops_state.FAILED, error=str(e), stage_state=stage_state, cypher=cypher_state)
         st.error(str(e))
     except Exception as e:  # noqa: BLE001 - surface any live-pipeline error to the operator
         cypher_state.update(
@@ -198,10 +297,22 @@ if run_clicked:
                     height=560,
                     scrolling=True,
                 )
+        if recorder:
+            recorder.finish(ops_state.FAILED, error=f"Live batch failed: {e}", stage_state=stage_state,
+                            cypher=cypher_state)
         st.error(f"Live batch failed: {e}")
+        st.caption("Any Etsy drafts created before the failure are already saved in the registry below "
+                   "(possibly as 'staging incomplete'). Nothing is retried automatically.")
+    finally:
+        # A Streamlit rerun/stop raises a non-Exception control-flow signal
+        # mid-batch; record that honestly instead of leaving it "running".
+        if recorder and not recorder.finished:
+            recorder.finish(ops_state.INTERRUPTED, error="Run stopped before completion (page rerun/stop).",
+                            stage_state=stage_state, cypher=cypher_state)
 
 st.markdown("---")
-live_entries = pipeline.list_all()
+if run_clicked:
+    live_entries, registry_error = _read_local("Live listing registry", pipeline.list_all, [])
 auto_published = [e for e in live_entries if e.get("published_by") == "manager"]
 if auto_published:
     st.subheader("🤖 Auto-published by Dr. Cypher")
@@ -216,12 +327,15 @@ st.caption(
     "from each stored record; listing prices are not sales and no revenue/profit is reported here."
 )
 status_counts = registry_counts(live_entries)
-registry_cols = st.columns(4)
+registry_cols = st.columns(5)
 registry_cols[0].metric("📝 Drafts · awaiting review", status_counts["drafts"])
 registry_cols[1].metric("🌐 Published", status_counts["published"])
 registry_cols[2].metric("⛔ Rejected", status_counts["rejected"])
-registry_cols[3].metric("📦 Recorded entries", len(live_entries))
-if not live_entries:
+registry_cols[3].metric("⚠️ Incomplete / recovered / other", status_counts["other"])
+registry_cols[4].metric("📦 Recorded entries", len(live_entries))
+if registry_error:
+    st.warning("The registry file exists but couldn't be read, so no records are listed. It was not modified.")
+elif not live_entries:
     st.info("No live listing records have been saved yet.")
 else:
     for entry in reversed(live_entries):
@@ -240,10 +354,28 @@ else:
                 st.caption(f"Recorded compliance status: {entry['compliance_status']}")
             if entry.get("rejection_reason"):
                 st.caption(f"Recorded rejection reason: {entry['rejection_reason']}")
+            if entry.get("status") == pipeline.STAGING_INCOMPLETE:
+                st.warning(
+                    f"The Etsy draft exists but staging stopped after step '{entry.get('staging_step')}'. "
+                    "It is not publishable or fulfillable from this app and is not retried automatically; "
+                    "review it in Etsy."
+                )
+            if entry.get("staging_error"):
+                st.caption(f"Recorded staging error: {entry['staging_error']}")
+            if entry.get("publish_error"):
+                st.caption(f"Recorded publish error (draft remains): {entry['publish_error']}")
+            if entry.get("recovered"):
+                rec = entry["recovered"]
+                st.info(
+                    f"{pipeline_recovery_note} Etsy state at import: {rec.get('etsy_state')}; "
+                    f"title: {rec.get('etsy_title')!r}; imported {rec.get('imported_at')}."
+                )
 
 st.markdown("---")
 st.subheader("Pending approvals")
-pending = pipeline.list_pending()
+pending, _ = _read_local("Pending approvals", pipeline.list_pending, [])
+if not etsy_connected:
+    st.caption("Publishing is disabled until Etsy is connected. Rejecting is local and stays available.")
 if not pending:
     st.info("Nothing pending. Run a live batch above.")
 else:
@@ -272,7 +404,8 @@ else:
                 value="rejected by human reviewer", key=f"reason_{i}_{entry['design_id']}",
             )
             col_a, col_r = st.columns(2)
-            if col_a.button("Approve & publish live", key=f"approve_{i}_{entry['design_id']}"):
+            if col_a.button("Approve & publish live", key=f"approve_{i}_{entry['design_id']}",
+                            disabled=not etsy_connected):
                 pipeline.approve_and_publish(entry["design_id"])
                 st.success("Published.")
                 st.rerun()
@@ -289,7 +422,12 @@ st.caption(
     "if a batch failed or a design never got approved, the art is still sitting right here "
     "and the raw file is reusable."
 )
-archive = pipeline.list_image_archive()
+try:
+    archive = pipeline.list_image_archive()
+except pipeline.LocalStoreError as e:
+    st.error(f"Image manifest: {e}")
+    st.warning("Showing every image file on disk without its recorded metadata (scores/niches unavailable).")
+    archive = pipeline.list_orphan_images()
 if not archive:
     st.info("No images generated yet.")
 else:
@@ -303,7 +441,7 @@ else:
             "in data/images/ and reuse any you like for a manual listing."
         )
     sorted_archive = sorted(archive, key=lambda e: (e.get("manager_score") is None, -(e.get("manager_score") or 0)))
-    already_staged = {e["design_id"] for e in pipeline.list_all()}
+    already_staged = {e.get("design_id") for e in live_entries}
     cols = st.columns(4)
     for i, entry in enumerate(sorted_archive):
         with cols[i % 4]:
@@ -341,7 +479,9 @@ else:
                         desc_in = st.text_area(
                             "Listing description", value=entry.get("prompt") or "", key=f"desc_{entry['design_id']}",
                         )
-                        submitted = st.form_submit_button("Create Etsy draft from this image")
+                        submitted = st.form_submit_button(
+                            "Create Etsy draft from this image", disabled=not etsy_connected or bool(registry_error)
+                        )
                     if submitted:
                         if not niche_in.strip() or not desc_in.strip():
                             st.error("Niche and description are required.")
@@ -366,7 +506,7 @@ st.caption(
     "Checks your Etsy shop for new PAID orders and forwards them to Printful to "
     "actually print and ship. Only acts on confirmed paid receipts."
 )
-if st.button("Sync new paid orders to Printful"):
+if st.button("Sync new paid orders to Printful", disabled=not etsy_connected):
     if not printful_client.is_configured():
         st.error("PRINTFUL_API_KEY is not set yet — add it to .env first.")
     else:

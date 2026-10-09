@@ -3,14 +3,11 @@
 Loads a local .env file (never committed) and exposes the handful of
 secrets/paths the Etsy/OpenAI/Printful clients need.
 """
-from pathlib import Path
 import os
 
 from dotenv import load_dotenv
 
-REPO_ROOT = Path(__file__).resolve().parents[2]
-SECRETS_DIR = REPO_ROOT / ".secrets"
-DATA_DIR = REPO_ROOT / "data"
+from app.paths import DATA_DIR, REPO_ROOT, SECRETS_DIR  # noqa: F401 - shared with app/sim (see app/paths.py)
 
 load_dotenv(REPO_ROOT / ".env")
 

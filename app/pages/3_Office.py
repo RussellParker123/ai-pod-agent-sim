@@ -16,7 +16,7 @@ from app.sim.characters import character_from_report  # noqa: E402
 from app.sim.team import TransferError, agents_for, load_team_state, save_team_state, transfer_events  # noqa: E402
 from app.utils.dr_cipher import get_dr_cipher_svg  # noqa: E402
 
-DATA_DIR = Path(__file__).resolve().parents[2] / "data"
+from app.paths import DATA_DIR  # noqa: E402 - honours AI_POD_DATA_DIR like the rest of the app
 TEAM_STATE_PATH = DATA_DIR / "team_state.json"
 
 DEPARTMENTS = [

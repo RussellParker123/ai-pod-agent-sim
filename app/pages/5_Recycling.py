@@ -18,7 +18,7 @@ if str(_REPO_ROOT) not in sys.path:
 
 from app.sim import recycling, sticker_team  # noqa: E402
 
-DATA_DIR = _REPO_ROOT / "data"
+from app.paths import DATA_DIR  # noqa: E402 - honours AI_POD_DATA_DIR like the rest of the app
 IMAGES_DIR = DATA_DIR / "images"
 STORE_PATH = DATA_DIR / recycling.RECYCLING_FILENAME
 

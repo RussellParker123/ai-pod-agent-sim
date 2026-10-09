@@ -36,11 +36,15 @@ STAGE_LOCATIONS = {
     "complete": "command",
 }
 
-STAGE_STATUSES = ("idle", "active", "done", "error")
+# "interrupted" is only used for recorded history: a stage that was active
+# when its batch stopped (e.g. server restart). It never animates.
+STAGE_STATUSES = ("idle", "active", "done", "error", "interrupted")
 ENTRY_STATUSES = {
     "pending_approval": "Draft · awaiting review",
     "live": "Published",
     "rejected": "Rejected",
+    "staging_incomplete": "Draft · staging incomplete (not publishable)",
+    "recovered_unverified": "Recovered from Etsy · unverified (not publishable)",
 }
 
 
@@ -60,8 +64,11 @@ def _node_html(key: str, icon: str, label: str, stage_state: dict) -> str:
     )
 
 
-def render_live_console(stage_state: dict, log_lines: list, character: dict = None) -> str:
-    """Build self-contained console markup; logs are escaped at the render boundary."""
+def render_live_console(stage_state: dict, log_lines: list, character: dict = None, recorded: bool = False) -> str:
+    """Build self-contained console markup; logs are escaped at the render boundary.
+
+    ``recorded=True`` labels everything as history restored from disk rather
+    than live activity (used after a rerun or server restart)."""
     character_status = stage_status({"manager": (character or {}).get("status", "idle")}, "manager")
     character = DrCypher.from_dict(character).to_dict()
     manager = _node_html(*MANAGER_NODE, stage_state)
@@ -75,7 +82,7 @@ def render_live_console(stage_state: dict, log_lines: list, character: dict = No
         f'aria-label="{html.escape(character["display_name"])} live character">'
         f'<div class="cypher-avatar" role="img" aria-label="{html.escape(character["display_name"])}">{avatar}</div>'
         '<div class="cypher-details">'
-        f'<div class="cypher-name">🧪 {html.escape(character["display_name"])} · LIVE</div>'
+        f'<div class="cypher-name">🧪 {html.escape(character["display_name"])} · {"RECORDED" if recorded else "LIVE"}</div>'
         f'<div class="cypher-meta">{html.escape(character["title"])} · {html.escape(character["mood"])} · '
         f'{html.escape(character["location"])}</div>'
         f'<div class="cypher-activity">{html.escape(character["activity"])}</div>'
@@ -85,6 +92,11 @@ def render_live_console(stage_state: dict, log_lines: list, character: dict = No
     log_html = "".join(
         f'<div class="line">{html.escape(str(line))}</div>' for line in log_lines
     ) or '<div class="line">&gt; standing by...</div>'
+    title = (
+        "📼 RECORDED HISTORY · RESTORED FROM DISK · NOT LIVE ACTIVITY"
+        if recorded else "⚡ LIVE OPS ARENA · EVENT-DRIVEN STAGE STATUS ⚡"
+    )
+    log_label = "Recorded event log" if recorded else "Live event log"
     return (
         """<style>
         *{box-sizing:border-box}
@@ -101,6 +113,7 @@ def render_live_console(stage_state: dict, log_lines: list, character: dict = No
         .cypher-presence.active{border-color:#ffaa00;box-shadow:0 0 12px #ffaa0066}
         .cypher-presence.done{border-color:#00ff41}
         .cypher-presence.error{border-color:#ff6b9d;box-shadow:0 0 12px #ff6b9d66}
+        .cypher-presence.interrupted{border-color:#94a3b8;border-style:dashed}
         .cypher-avatar{flex:0 0 76px;line-height:0}
         .cypher-name{color:#ff6b9d;font-weight:bold;letter-spacing:.5px}
         .cypher-meta{font-size:11px;color:#9edfff;margin-top:4px}
@@ -119,6 +132,8 @@ def render_live_console(stage_state: dict, log_lines: list, character: dict = No
         .node.done .status-label{color:#0a0e27;background:#00ff41}
         .node.error{border-color:#ff6b9d;box-shadow:0 0 12px #ff6b9d66}
         .node.error .status-label{color:#fff;background:#a91b54}
+        .node.interrupted{border-color:#94a3b8;border-style:dashed}
+        .node.interrupted .status-label{color:#0a0e27;background:#94a3b8}
         .term{background:#070914;border:1px solid #00ccff88;border-radius:8px;padding:9px 10px;
           height:112px;margin-top:12px;overflow:auto;font-size:12px;color:#9dffc1;overflow-wrap:anywhere}
         .term .line{padding:1px 0}
@@ -128,11 +143,11 @@ def render_live_console(stage_state: dict, log_lines: list, character: dict = No
         @media(max-width:420px){.cyber-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
         </style>"""
         + '<div class="cyber-wrap">'
-        + '<div class="cyber-title">⚡ LIVE OPS ARENA · EVENT-DRIVEN STAGE STATUS ⚡</div>'
+        + f'<div class="cyber-title">{title}</div>'
         + f'<div class="command-deck">{manager}</div>'
         + presence
         + f'<div class="cyber-grid">{nodes}</div>'
-        + f'<div class="term" role="log" aria-label="Live event log">{log_html}</div>'
+        + f'<div class="term" role="log" aria-label="{log_label}">{log_html}</div>'
         + "</div>"
     )
 

@@ -325,6 +325,17 @@ def publish_listing(shop_id: int, listing_id: int, return_policy_id: Optional[in
     return _patch(f"/shops/{shop_id}/listings/{listing_id}", json_body=body)
 
 
+def get_shop_listings(shop_id: int, state: str = "active", limit: int = 100, offset: int = 0) -> dict:
+    """Read-only: one page of the shop's listings in `state` (e.g. "active",
+    "draft") via GET /shops/{shop_id}/listings. Needs the listings_r scope.
+    Returns Etsy's {"count": int, "results": [...]} payload. Used only by
+    the explicit, user-triggered recovery preview in app/live/recovery.py."""
+    return _get(
+        f"/shops/{shop_id}/listings",
+        params={"state": state, "limit": limit, "offset": offset},
+    )
+
+
 def get_shop_receipts(shop_id: int, was_paid: bool = True, limit: int = 25) -> List[dict]:
     return _get(
         f"/shops/{shop_id}/receipts",

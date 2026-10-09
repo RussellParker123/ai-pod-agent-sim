@@ -2,7 +2,8 @@ from pathlib import Path
 import json
 import datetime as dt
 
-DATA_DIR = Path(__file__).resolve().parents[2] / "data"
+from app.paths import DATA_DIR  # same directory the live integrations use
+
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 
 

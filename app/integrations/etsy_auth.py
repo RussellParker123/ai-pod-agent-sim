@@ -199,4 +199,16 @@ def get_valid_access_token() -> str:
 
 
 def is_connected() -> bool:
-    return _load_tokens() is not None
+    """True when a readable token file exists. This does NOT verify the
+    token with Etsy; API connectivity is only checked by real requests.
+    An unreadable token file counts as not connected (never raises)."""
+    try:
+        return _load_tokens() is not None
+    except (OSError, ValueError):
+        return False
+
+
+def token_file_status() -> str:
+    """'present' or 'missing' — existence only; the file is never read here,
+    so nothing secret can leak into diagnostics."""
+    return "present" if ETSY_TOKENS_PATH.is_file() else "missing"

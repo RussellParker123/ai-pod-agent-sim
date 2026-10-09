@@ -17,7 +17,7 @@ from typing import Dict, List, Optional
 
 from app.integrations import etsy_client, printful_client
 from app.integrations.config import DATA_DIR
-from app.live.pipeline import list_all
+from app.live.pipeline import is_actionable, list_all
 
 PROCESSED_RECEIPTS_PATH = DATA_DIR / "processed_etsy_receipts.json"
 
@@ -37,6 +37,10 @@ def _save_processed(processed: Dict[str, dict]) -> None:
 
 def _find_sync_variant_id(listing_id: int) -> Optional[int]:
     for entry in list_all():
+        # Half-staged drafts and listings imported read-only from Etsy are
+        # never fulfilled automatically: their Printful mapping is unverified.
+        if not is_actionable(entry):
+            continue
         if entry.get("etsy_listing_id") == listing_id:
             product = entry.get("printful_sync_product") or {}
             variants = product.get("sync_variants") or []

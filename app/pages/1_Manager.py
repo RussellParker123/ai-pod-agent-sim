@@ -1,10 +1,14 @@
 import json
+import sys
 from pathlib import Path
 import pandas as pd
 import streamlit as st
 import plotly.express as px
 
-DATA_DIR = Path(__file__).resolve().parents[2] / "data"
+if str(Path(__file__).resolve().parents[2]) not in sys.path:
+    sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+
+from app.paths import DATA_DIR  # noqa: E402 - honours AI_POD_DATA_DIR like the rest of the app
 
 st.title("Manager Agent Oversight")
 

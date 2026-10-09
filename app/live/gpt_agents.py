@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import random
+import re
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import List
 
@@ -46,6 +47,26 @@ PROMPT_SYSTEM_PROMPT = (
 _DESIGN_ID_SEQ_PATH = DATA_DIR / "design_id_seq.json"
 
 
+_DESIGN_ID_RE = re.compile(r"(?<![A-Za-z0-9])D(\d{3,})(?!\d)")
+
+
+def _highest_existing_design_number() -> int:
+    """Highest Dnnnn number found in saved images, the live registry or the
+    image manifest (best-effort, read-only)."""
+    highest = 0
+    images = DATA_DIR / "images"
+    names = [p.stem for p in images.glob("*")] if images.is_dir() else []
+    for filename in ("pending_approvals.json", "image_manifest.json"):
+        try:
+            names.append((DATA_DIR / filename).read_text(encoding="utf-8"))
+        except (OSError, UnicodeDecodeError):
+            pass
+    for text in names:
+        for match in _DESIGN_ID_RE.findall(text):
+            highest = max(highest, int(match))
+    return highest
+
+
 def _next_design_ids(n: int) -> List[str]:
     """Allocates n globally-unique design IDs, persisted across runs/batches
     (data/design_id_seq.json). Every live batch used to start back at D001,
@@ -57,6 +78,10 @@ def _next_design_ids(n: int) -> List[str]:
     if _DESIGN_ID_SEQ_PATH.exists():
         with open(_DESIGN_ID_SEQ_PATH, "r", encoding="utf-8") as f:
             last = json.load(f).get("last", 0)
+    # If the sequence file was lost but records/images were restored from a
+    # backup, never hand out an ID that already exists — a reused ID would
+    # overwrite data/images/<id>.png and collide in the registry.
+    last = max(last, _highest_existing_design_number())
     ids = [f"D{last + i + 1:04}" for i in range(n)]
     _DESIGN_ID_SEQ_PATH.parent.mkdir(parents=True, exist_ok=True)
     with open(_DESIGN_ID_SEQ_PATH, "w", encoding="utf-8") as f:

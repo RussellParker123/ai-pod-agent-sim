@@ -13,6 +13,8 @@ from __future__ import annotations
 import argparse
 import copy
 import json
+import os
+import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, List, Optional
@@ -43,6 +45,92 @@ IMAGE_MANIFEST_PATH = DATA_DIR / "image_manifest.json"
 RECYCLING_PATH = DATA_DIR / recycling.RECYCLING_FILENAME
 IMAGES_DIR = DATA_DIR / "images"
 
+# Registry statuses beyond the original pending_approval / live / rejected.
+# Neither can be approved/published from this app or matched by order sync.
+STAGING_INCOMPLETE = "staging_incomplete"  # Etsy draft exists, but a later staging step failed
+RECOVERED_UNVERIFIED = "recovered_unverified"  # imported read-only from Etsy; provenance unknown
+NON_ACTIONABLE_STATUSES = frozenset({STAGING_INCOMPLETE, RECOVERED_UNVERIFIED})
+
+
+class LocalStoreError(RuntimeError):
+    """A saved local JSON file exists but can't be read safely. Raised
+    instead of silently treating it as empty, which would let the next
+    write replace the only copy of the user's records."""
+
+
+def _atomic_write_json(path: Path, obj) -> None:
+    """Write to a temp file in the same directory, fsync, then rename over
+    the target so a crash mid-write never leaves a truncated file."""
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name(f".{path.name}.{uuid.uuid4().hex}.tmp")
+    try:
+        with open(tmp, "x", encoding="utf-8") as f:
+            json.dump(obj, f, indent=2)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp, path)
+    except BaseException:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
+
+
+def _read_json_records(path: Path, label: str) -> List[dict]:
+    """Missing file -> []. Unreadable/invalid file -> LocalStoreError (the
+    file is left exactly as it is)."""
+    path = Path(path)
+    if not path.exists():
+        return []
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+    except (OSError, ValueError) as e:
+        raise LocalStoreError(
+            f"{label} at {path} could not be read ({type(e).__name__}: {e}). It was left untouched; "
+            "restore it from a backup (or move it aside) before running actions that write to it."
+        ) from e
+    if not isinstance(data, list) or not all(isinstance(item, dict) for item in data):
+        raise LocalStoreError(
+            f"{label} at {path} is not a JSON list of records. It was left untouched; restore it from a "
+            "backup (or move it aside) before running actions that write to it."
+        )
+    return data
+
+
+def is_actionable(entry: dict) -> bool:
+    """False for records that must never be published or fulfilled from
+    this app: half-staged drafts and listings imported read-only from Etsy."""
+    return entry.get("status") not in NON_ACTIONABLE_STATUSES and not entry.get("recovered")
+
+
+def _registry_key(entry: dict):
+    if entry.get("etsy_listing_id") is not None:
+        return ("listing", str(entry.get("etsy_shop_id")), str(entry["etsy_listing_id"]))
+    return ("design", str(entry.get("design_id")))
+
+
+def _upsert_entries(entries: List[dict]) -> None:
+    """Insert-or-replace registry records keyed by Etsy shop+listing ID
+    (or design_id before a listing exists), so incremental checkpoints of
+    the same draft never create duplicate records."""
+    pending = _load_pending()
+    index = {_registry_key(e): i for i, e in enumerate(pending)}
+    for entry in entries:
+        key = _registry_key(entry)
+        if key in index:
+            pending[index[key]] = entry
+        else:
+            index[key] = len(pending)
+            pending.append(entry)
+    _save_pending(pending)
+
+
+def _upsert_entry(entry: dict) -> None:
+    _upsert_entries([entry])
+
 
 def _recycling_store() -> recycling.RecyclingStore:
     return recycling.RecyclingStore(RECYCLING_PATH)
@@ -54,16 +142,15 @@ def _live_recycling_context() -> dict:
 
 
 def _load_pending() -> List[dict]:
-    if PENDING_APPROVALS_PATH.exists():
-        with open(PENDING_APPROVALS_PATH, "r", encoding="utf-8") as f:
-            return json.load(f)
-    return []
+    return _read_json_records(PENDING_APPROVALS_PATH, "Live listing registry")
 
 
 def _save_pending(items: List[dict]) -> None:
-    PENDING_APPROVALS_PATH.parent.mkdir(parents=True, exist_ok=True)
-    with open(PENDING_APPROVALS_PATH, "w", encoding="utf-8") as f:
-        json.dump(items, f, indent=2)
+    _atomic_write_json(PENDING_APPROVALS_PATH, items)
+
+
+def _load_manifest() -> List[dict]:
+    return _read_json_records(IMAGE_MANIFEST_PATH, "Image manifest")
 
 
 def _append_image_manifest(design, manager: ManagerAgent) -> None:
@@ -72,10 +159,7 @@ def _append_image_manifest(design, manager: ManagerAgent) -> None:
     spend is always auditable later, even if the batch crashes before
     reaching Etsy/Printful or a draft never gets approved. See
     list_image_archive() to read this back."""
-    manifest = []
-    if IMAGE_MANIFEST_PATH.exists():
-        with open(IMAGE_MANIFEST_PATH, "r", encoding="utf-8") as f:
-            manifest = json.load(f)
+    manifest = _load_manifest()
     # Art-team style variants (e.g. "D010-v2") are built *after* scoring and
     # share their parent design's score/decision (ManagerAgent.score_for).
     scoring = manager.score_for(design)
@@ -96,9 +180,7 @@ def _append_image_manifest(design, manager: ManagerAgent) -> None:
             "generated_at": datetime.now().isoformat(timespec="seconds"),
         }
     )
-    IMAGE_MANIFEST_PATH.parent.mkdir(parents=True, exist_ok=True)
-    with open(IMAGE_MANIFEST_PATH, "w", encoding="utf-8") as f:
-        json.dump(manifest, f, indent=2)
+    _atomic_write_json(IMAGE_MANIFEST_PATH, manifest)
 
 
 def list_image_archive() -> List[dict]:
@@ -106,12 +188,16 @@ def list_image_archive() -> List[dict]:
     manager score/decision) when generated after this feature shipped, plus
     any older orphaned files in data/images/ with no manifest record (from
     before image generation moved to the Manager-approval step)."""
-    manifest = []
-    if IMAGE_MANIFEST_PATH.exists():
-        with open(IMAGE_MANIFEST_PATH, "r", encoding="utf-8") as f:
-            manifest = json.load(f)
+    manifest = _load_manifest()
     known_paths = {Path(e["image_uri"]).name for e in manifest if e.get("image_uri")}
+    return manifest + list_orphan_images(known_paths)
 
+
+def list_orphan_images(known_names=()) -> List[dict]:
+    """PNG files in data/images/ with no manifest record (metadata unknown).
+    With no known names, every PNG is listed — the safe fallback when the
+    manifest itself can't be read."""
+    known_paths = set(known_names)
     images_dir = DATA_DIR / "images"
     orphaned = []
     if images_dir.exists():
@@ -130,7 +216,7 @@ def list_image_archive() -> List[dict]:
                         "generated_at": None,
                     }
                 )
-    return manifest + orphaned
+    return orphaned
 
 
 def stage_archived_image(
@@ -173,10 +259,7 @@ def stage_archived_image(
     entry = _stage_design(design, shop)
     entry["published_by"] = None
     entry["source"] = "image_archive"
-
-    pending = _load_pending()
-    pending.append(entry)
-    _save_pending(pending)
+    _upsert_entry(entry)
     return entry
 
 
@@ -306,6 +389,10 @@ def run_live_batch_stream(
     "count": Optional[int]}. The final event is
     {"stage": "complete", "queued": [...]}.
     """
+    # Refuse to start (and spend anything) if the local registry or image
+    # manifest can't be read: writing later would replace the user's records.
+    _load_pending()
+    _load_manifest()
     config = load_etsy_config()
 
     yield {"stage": "etsy_connect", "status": "active", "message": "Connecting to your Etsy shop..."}
@@ -427,20 +514,45 @@ def run_live_batch_stream(
     printful_count = 0
     auto_published = 0
     for design in greenlit:
+        # Idempotency guard: never create a second Etsy draft for a design
+        # that already has a local record (e.g. restored from a backup).
+        if any(e.get("design_id") == design.design_id for e in _load_pending()):
+            yield {
+                "stage": "etsy",
+                "status": "active",
+                "message": f"{design.design_id} already has a local registry record — skipped, no new draft created.",
+                "design_id": design.design_id,
+            }
+            continue
+        # _stage_design checkpoints the record to disk as soon as Etsy
+        # returns a listing_id, and again after each later step.
         entry = _stage_design(design, shop)
+        entry["published_by"] = None
         score = manager.score_for(design).get("score", 0.0)
         if manager_auto_publish and score >= auto_publish_threshold:
-            etsy_client.publish_listing(
-                entry["etsy_shop_id"], entry["etsy_listing_id"], return_policy_id=shop["return_policy_id"]
-            )
+            try:
+                etsy_client.publish_listing(
+                    entry["etsy_shop_id"], entry["etsy_listing_id"], return_policy_id=shop["return_policy_id"]
+                )
+            except Exception as e:
+                # The draft is real and complete; only publishing failed.
+                entry["publish_error"] = f"{type(e).__name__}: {e}"[:500]
+                _upsert_entry(entry)
+                raise
             entry["status"] = "live"
             entry["published_by"] = "manager"
             auto_published += 1
-        else:
-            entry["published_by"] = None
+        _upsert_entry(entry)
         queued.append(entry)
         if entry.get("printful_sync_product"):
             printful_count += 1
+        yield {
+            "stage": "etsy",
+            "status": "active",
+            "message": f"{design.design_id} saved locally as Etsy listing_id={entry['etsy_listing_id']} "
+            f"({'published' if entry['status'] == 'live' else 'draft'}).",
+            "design_id": design.design_id,
+        }
     yield {
         "stage": "etsy",
         "status": "done",
@@ -462,10 +574,6 @@ def run_live_batch_stream(
         "message": f"Created {printful_count} Printful mockup product(s).",
         "count": printful_count,
     }
-
-    pending = _load_pending()
-    pending.extend(queued)
-    _save_pending(pending)
 
     yield {"stage": "complete", "queued": queued}
 
@@ -611,30 +719,10 @@ def _stage_design(design, shop: Dict) -> dict:
     )
     listing_id = listing["listing_id"]
 
-    etsy_image_url = None
-    flat_design_image_id = None
-    if design.image_uri and Path(design.image_uri).exists():
-        image_resp = etsy_client.upload_listing_image(shop["shop_id"], listing_id, design.image_uri)
-        etsy_image_url = image_resp.get("url_fullxfull") or image_resp.get("url_570xN")
-        flat_design_image_id = image_resp.get("listing_image_id")
-
-    mockup_image_url, mockup_image_uri = _attach_mockup(
-        design.design_id, design.product_type, shop["shop_id"], listing_id, etsy_image_url, flat_design_image_id
-    )
-
-    printful_product = None
-    if printful_client.is_configured() and etsy_image_url:
-        variant_id = PRODUCT_PRINTFUL_VARIANT.get(design.product_type)
-        if variant_id:
-            printful_product = printful_client.create_sync_product(
-                name=f"{design.design_id}-{catalog.get('name', design.product_type)}",
-                variant_id=variant_id,
-                image_url=etsy_image_url,
-                retail_price=f"{design.price:.2f}",
-                preview_image_url=mockup_image_url,
-            )
-
-    return {
+    # Checkpoint immediately: the Etsy draft now exists, so it must be on
+    # disk before anything else can fail. It stays STAGING_INCOMPLETE (not
+    # approvable/publishable/fulfillable) until every step below succeeds.
+    entry = {
         "design_id": design.design_id,
         "niche": design.niche,
         "product_type": design.product_type,
@@ -643,12 +731,13 @@ def _stage_design(design, shop: Dict) -> dict:
         "image_uri": design.image_uri,
         "etsy_listing_id": listing_id,
         "etsy_shop_id": shop["shop_id"],
-        "etsy_image_url": etsy_image_url,
-        "mockup_image_url": mockup_image_url,
-        "mockup_image_uri": mockup_image_uri,
-        "etsy_flat_image_id": flat_design_image_id,
-        "printful_sync_product": printful_product,
-        "status": "pending_approval",
+        "etsy_image_url": None,
+        "mockup_image_url": None,
+        "mockup_image_uri": None,
+        "etsy_flat_image_id": None,
+        "printful_sync_product": None,
+        "status": STAGING_INCOMPLETE,
+        "staging_step": "etsy_draft_created",
         "trend_score": design.trend_score,
         "compliance_status": design.compliance_status,
         "compliance_notes": design.compliance_notes,
@@ -657,6 +746,40 @@ def _stage_design(design, shop: Dict) -> dict:
         "parent_design_id": design.parent_design_id or None,
         "lineage": design.lineage,
     }
+    _upsert_entry(entry)
+
+    try:
+        if design.image_uri and Path(design.image_uri).exists():
+            image_resp = etsy_client.upload_listing_image(shop["shop_id"], listing_id, design.image_uri)
+            entry["etsy_image_url"] = image_resp.get("url_fullxfull") or image_resp.get("url_570xN")
+            entry["etsy_flat_image_id"] = image_resp.get("listing_image_id")
+            entry["staging_step"] = "etsy_image_uploaded"
+            _upsert_entry(entry)
+
+        entry["mockup_image_url"], entry["mockup_image_uri"] = _attach_mockup(
+            design.design_id, design.product_type, shop["shop_id"], listing_id,
+            entry["etsy_image_url"], entry["etsy_flat_image_id"],
+        )
+
+        if printful_client.is_configured() and entry["etsy_image_url"]:
+            variant_id = PRODUCT_PRINTFUL_VARIANT.get(design.product_type)
+            if variant_id:
+                entry["printful_sync_product"] = printful_client.create_sync_product(
+                    name=f"{design.design_id}-{catalog.get('name', design.product_type)}",
+                    variant_id=variant_id,
+                    image_url=entry["etsy_image_url"],
+                    retail_price=f"{design.price:.2f}",
+                    preview_image_url=entry["mockup_image_url"],
+                )
+    except Exception as e:
+        entry["staging_error"] = f"{type(e).__name__}: {e}"[:500]
+        _upsert_entry(entry)
+        raise
+
+    entry["status"] = "pending_approval"
+    entry["staging_step"] = "complete"
+    _upsert_entry(entry)
+    return entry
 
 
 def approve_and_publish(design_id: str) -> dict:
@@ -767,9 +890,7 @@ def stage_recycled_candidate(record_id: str) -> dict:
     entry = _stage_design(design, _get_shop_context())
     entry["published_by"] = None  # never auto-published
     entry["source"] = "recycling"
-    pending = _load_pending()
-    pending.append(entry)
-    _save_pending(pending)
+    _upsert_entry(entry)
     store.mark_reentered(record_id, "live:etsy_draft", dict(gates, human_approval="pending (Live Ops)"))
     store.save()
     return {"status": "staged", "gates": gates, "entry": entry}
@@ -839,9 +960,7 @@ def stage_recycled_sticker(record_id: str) -> dict:
         recycling_record_id=record_id,
         production_gates=gates,
     )
-    pending = _load_pending()
-    pending.append(entry)
-    _save_pending(pending)
+    _upsert_entry(entry)
     workflow.update(status="staged", production_gates=gates, design_id=design_id)
     record["sticker_workflow"] = workflow
     record["history"].append({

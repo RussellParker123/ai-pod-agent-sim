@@ -6,13 +6,12 @@ Overrides are saved to data/overrides.json and never alter the original run file
 - force_approve:  push a HOLD design through. Compliance-blocked designs can NOT be forced.
 """
 import json
-from pathlib import Path
 import pandas as pd
 import streamlit as st
 from app.sim import recycling
 from app.sim.approvals import final_review_status
 
-DATA_DIR = Path(__file__).resolve().parents[2] / "data"
+from app.paths import DATA_DIR  # honours AI_POD_DATA_DIR like the rest of the app
 OVERRIDES = DATA_DIR / "overrides.json"
 RECYCLING_PATH = DATA_DIR / recycling.RECYCLING_FILENAME
 

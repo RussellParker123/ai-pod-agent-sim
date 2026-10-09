@@ -45,6 +45,7 @@ def test_staging_uses_catalog_for_listing_mockup_and_preview(
     tmp_path, monkeypatch, product_type, product_id, variant_id, product_name
 ):
     monkeypatch.setattr(pipeline, "DATA_DIR", tmp_path)
+    monkeypatch.setattr(pipeline, "PENDING_APPROVALS_PATH", tmp_path / "pending.json")
     images = tmp_path / "images"
     images.mkdir()
     artwork = images / "D1.png"
@@ -63,6 +64,7 @@ def test_staging_uses_catalog_for_listing_mockup_and_preview(
     printful = Mock()
     printful.is_configured.return_value = True
     printful.generate_mockup.return_value = "https://example.test/mockup.jpg"
+    printful.create_sync_product.return_value = {"id": 9}
     monkeypatch.setattr(pipeline, "printful_client", printful)
     download = Mock()
     download.content = b"mockup"
