@@ -8,6 +8,18 @@ from app.sim import recycling, sticker_team
 from app.sim.agents import Design
 
 
+@pytest.fixture
+def sticker_live_env(tmp_path, monkeypatch):
+    images = tmp_path / "images"
+    images.mkdir()
+    monkeypatch.setattr(pipeline, "DATA_DIR", tmp_path)
+    monkeypatch.setattr(pipeline, "IMAGES_DIR", images)
+    monkeypatch.setattr(pipeline, "PENDING_APPROVALS_PATH", tmp_path / "pending_approvals.json")
+    monkeypatch.setattr(pipeline, "IMAGE_MANIFEST_PATH", tmp_path / "image_manifest.json")
+    monkeypatch.setattr(pipeline, "RECYCLING_PATH", tmp_path / recycling.RECYCLING_FILENAME)
+    return tmp_path, images
+
+
 def _live_record(store, image, compliance="pass"):
     image.write_bytes(b"\x89PNG fake")
     design = asdict(Design(
@@ -60,8 +72,8 @@ def test_sticker_workflow_refuses_quarantined_or_missing_images(tmp_path):
         sticker_team.submit_team_review(store, safe_record["record_id"], images)
 
 
-def test_recycled_sticker_stages_once_after_agent_approvals(live_env, monkeypatch):
-    tmp_path, images = live_env
+def test_recycled_sticker_stages_once_after_agent_approvals(sticker_live_env, monkeypatch):
+    tmp_path, images = sticker_live_env
     store = pipeline._recycling_store()
     record = _live_record(store, images / "L9.png")
     _approve_sticker(store, record, images)
