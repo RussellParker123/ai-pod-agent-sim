@@ -36,7 +36,14 @@ pip install -r requirements.txt
 ```bash
 python -m app.sim.run_simulation                       # 24 candidates
 python -m app.sim.run_simulation --batch-size 12 --seed 7   # smaller, reproducible
+python -m app.sim.run_simulation --theme western       # make every new design Western-themed
+python -m app.sim.run_simulation --theme fall           # cozy autumn concepts
 ```
+
+You can also enter a theme in the dashboard's **Theme request** field before
+starting an offline run. Western and fall/autumn requests select matching
+design niches; other text is used as a custom theme. Leave it blank for the
+usual mix of niches. Each run records the requested and resolved theme.
 
 Each run is saved as a new `data/run_<timestamp>.json` (a `_2`, `_3`, ...
 suffix is added if two runs start in the same second); older runs are never
