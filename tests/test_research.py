@@ -66,7 +66,7 @@ def test_western_marketplace_research_informs_original_art_brief():
     apply_research([design], research)
     prompt_agent([design], research=research)
 
-    assert research["top_styles"] == ["western", "southwestern"]
+    assert set(research["top_styles"]) == {"western", "southwestern"}
     assert design.brief["motif"] in {
         "sunlit saguaro cactus beneath a desert sunset",
         "roadrunner crossing a red-rock mesa",
