@@ -41,6 +41,19 @@ def test_brief_is_structured_product_aware_and_research_fed():
                                                      "print_constraints", "originality_guardrails"}
 
 
+def test_western_designs_have_varied_original_motifs_and_reference_style():
+    designs = [_design(f"W{i}", niche="western desert") for i in range(20)]
+    prompt_agent(designs, product_types=("mug",))
+    motifs = {d.brief["motif"] for d in designs}
+
+    assert len(motifs) >= 5
+    assert all(any(term in d.brief["palette"] for term in ("terracotta", "ochre", "sage"))
+               for d in designs)
+    assert all("red-rock landforms" in d.brief["art_direction"] for d in designs)
+    assert all("continuous panoramic wrap scene" in d.brief["composition"] for d in designs)
+    assert all("Print:" in d.prompt and "never reproduce a reference" in d.prompt for d in designs)
+
+
 def test_refinement_is_bounded_and_records_feedback():
     d = _design(prompt='Disney style mug with "good morning to every single sleepy coffee lover"')
     d.brief = build_brief(d, product_types=("mug",))

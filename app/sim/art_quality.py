@@ -95,9 +95,13 @@ NICHE_MOTIFS = {
         "mushroom cottage under amber leaves",
     ],
     "western desert": [
-        "sunlit saguaro cactus beneath a desert sunset",
-        "roadrunner crossing a red-rock mesa",
-        "horseshoe and wildflowers in a simple ranch badge",
+        "golden-hour trail winding through red-rock mesas and cottonwood trees",
+        "prickly pear cactus in bloom among desert marigolds and silver sage",
+        "pair of well-worn cowboy boots with prairie wildflowers curling around them",
+        "quiet canyon camp with a glowing lantern, distant horse, and starry sky",
+        "small desert river beneath layered mesas and a flock of migrating birds",
+        "ranch hat resting beside a sprig of bluebonnets and golden grasses",
+        "horseshoe entwined with sagebrush and tiny desert blossoms",
     ],
 }
 GENERIC_MOTIFS = [
@@ -125,8 +129,8 @@ PALETTES = {
     "watercolor": "soft sage, blush, slate blue, charcoal outline",
     "coffee": "espresso brown, latte tan, cream, black",
     "pet": "warm ginger, soft gray, cream, charcoal",
-    "western": "terracotta, turquoise, sandstone, cream, dark brown",
-    "southwestern": "terracotta, turquoise, sandstone, cream, dark brown",
+    "western": "terracotta, rust, golden ochre, muted sage, turquoise accent, warm cream, dark umber",
+    "southwestern": "terracotta, rust, golden ochre, muted sage, turquoise accent, warm cream, dark umber",
 }
 DEFAULT_PALETTE = "3-4 flat colors with one dark anchor color"
 
@@ -286,9 +290,11 @@ def build_brief(
             "Create polished, handcrafted giftable artwork rather than generic clip art. When the "
             "theme suits it, use a cozy storybook mood with layered watercolor or gouache texture, "
             "warm natural color harmony, and a few charming secondary details; adapt the finish to "
-            "the selected style and palette. For a mug wrap, build a coherent left-to-right scene "
-            "with a strong central focal point and lighter supporting detail toward the edges. Keep "
-            "a clear focal hierarchy, distinctive silhouette, deliberate negative space, and "
+            "the selected style and palette. For Western desert themes, use layered red-rock "
+            "landforms, golden-hour light, and restrained sage or wildflower accents for a warm "
+            "illustrated keepsake feel. For a mug wrap, build a coherent left-to-right scene with "
+            "a strong central focal point and lighter supporting detail toward the edges. Keep a "
+            "clear focal hierarchy, distinctive silhouette, deliberate negative space, and "
             "print-safe detail. Make standalone printable artwork, not a product photo or mockup, "
             "and never reproduce a reference's "
             "specific characters, wording, or composition."
