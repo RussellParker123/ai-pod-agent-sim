@@ -49,6 +49,33 @@ def test_marketplace_research_informs_original_brief_without_copying_listing():
     assert "high-level inspiration" in design.prompt
 
 
+def test_western_marketplace_research_informs_original_art_brief():
+    class WesternConnector:
+        def get_marketplace_listings(self, niches, limit=10):
+            assert "western desert" in niches
+            return [
+                {
+                    "title": "Southwestern cactus wall art",
+                    "tags": ["western", "southwestern", "cactus"],
+                    "demand": 100,
+                }
+            ]
+
+    research = research_agent(["western desert"], etsy_connector=WesternConnector())
+    design = Design("D1", "western desert", 0.5)
+    apply_research([design], research)
+    prompt_agent([design], research=research)
+
+    assert set(research["top_styles"]) == {"western", "southwestern"}
+    assert design.brief["motif"] in {
+        "sunlit saguaro cactus beneath a desert sunset",
+        "roadrunner crossing a red-rock mesa",
+        "horseshoe and wildflowers in a simple ranch badge",
+    }
+    assert "terracotta, turquoise, sandstone, cream, dark brown" in design.brief["palette"]
+    assert "high-level inspiration" in design.prompt
+
+
 def test_research_falls_back_to_simulation():
     r = research_agent(["pet lovers"])
     assert r["source"] == "simulated" and r["best_sellers"]

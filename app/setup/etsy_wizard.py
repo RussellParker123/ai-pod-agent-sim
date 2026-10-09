@@ -52,6 +52,7 @@ DEFAULT_NICHES = [
     "retro outdoors",
     "bookish humor",
     "coffee culture",
+    "western desert",
 ]
 DEFAULT_PRODUCT_TYPES = ["mug", "tshirt", "tote"]
 DEFAULT_MARGIN = 0.42
