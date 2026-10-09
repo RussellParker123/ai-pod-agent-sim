@@ -309,9 +309,10 @@ def test_staging_deletes_partial_draft_when_mockup_fails(tmp_path, monkeypatch):
     monkeypatch.setattr(pipeline, "etsy_client", etsy)
     monkeypatch.setattr(pipeline, "printful_client", printful)
     design = Design("D1", "bookish humor", 0.8, product_type="tshirt", image_uri=str(artwork))
+    shop = {"shop_id": 1, "shipping_profile_id": 2, "readiness_state_id": 3, "return_policy_id": 4}
 
     with pytest.raises(RuntimeError, match="incomplete Etsy draft 5 was deleted"):
-        pipeline._stage_design(design, {"shop_id": 1})
+        pipeline._stage_design(design, shop)
 
     etsy.delete_listing.assert_called_once_with(1, 5)
 
