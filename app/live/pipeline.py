@@ -306,6 +306,8 @@ def run_live_batch_stream(
     "count": Optional[int]}. The final event is
     {"stage": "complete", "queued": [...]}.
     """
+    if not printful_client.is_configured():
+        raise RuntimeError("Set PRINTFUL_API_KEY before creating Etsy listings with product mockups.")
     config = load_etsy_config()
 
     yield {"stage": "etsy_connect", "status": "active", "message": "Connecting to your Etsy shop..."}
