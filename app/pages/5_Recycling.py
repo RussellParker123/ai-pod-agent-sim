@@ -16,7 +16,7 @@ _REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
-from app.sim import recycling  # noqa: E402
+from app.sim import recycling, sticker_team  # noqa: E402
 
 DATA_DIR = _REPO_ROOT / "data"
 IMAGES_DIR = DATA_DIR / "images"
@@ -113,6 +113,46 @@ for r in shown:
             st.text("Provenance: " + json.dumps(r.get("provenance") or {}))
             if r.get("lineage"):
                 st.text("Lineage: " + json.dumps(r["lineage"]))
+
+        sticker = r.get("sticker_workflow") or {}
+        if (r["status"] == recycling.PENDING_REVIEW and r["source"] == "live"
+                and r["asset_kind"] == "generated_image"):
+            st.markdown("**Die-cut sticker production**")
+            st.caption("Inspect the photo above. Approval order: recycler team → overseer → Dr. Cypher. "
+                       "Creating a draft also requires configured Printful/Etsy product details; publishing "
+                       "still requires your approval in Live Ops.")
+            state = sticker.get("status", "not_submitted")
+            try:
+                from app.live.catalog_map import sticker_configuration_errors
+                missing_config = sticker_configuration_errors()
+            except Exception:
+                missing_config = ["sticker product configuration"]
+            if state == "not_submitted":
+                if st.button("Recycler team: submit reviewed photo", key=f"sticker_team_{rid}"):
+                    _act(sticker_team.submit_team_review, store, rid, IMAGES_DIR)
+            elif state == "awaiting_overseer":
+                if st.button("Sticker overseer: review team submission", key=f"sticker_overseer_{rid}"):
+                    _act(sticker_team.overseer_review, store, rid, IMAGES_DIR)
+            elif state == "awaiting_cypher":
+                if st.button("Dr. Cypher: approve overseer", key=f"sticker_cypher_{rid}"):
+                    _act(sticker_team.cypher_approve, store, rid, IMAGES_DIR)
+            elif state == "approved":
+                if missing_config:
+                    st.info("Sticker draft staging needs configuration: " + ", ".join(missing_config))
+                if st.button("Create Printful-backed Etsy sticker draft", key=f"sticker_stage_{rid}",
+                             disabled=bool(missing_config)):
+                    try:
+                        from app.live import pipeline
+
+                        result = pipeline.stage_recycled_sticker(rid)
+                        st.success(f"Sticker listing status: {result['status']}")
+                        st.rerun()
+                    except Exception as exc:  # noqa: BLE001 - surface integration errors to the operator
+                        st.error(f"Could not stage sticker: {exc}")
+            elif state == "staged":
+                st.success(f"Sticker draft {sticker.get('design_id')} is waiting for final approval in Live Ops.")
+            elif state == "rejected":
+                st.warning("The overseer rejected this photo for sticker production.")
 
         analysis = r.get("analysis") or {}
         if analysis:

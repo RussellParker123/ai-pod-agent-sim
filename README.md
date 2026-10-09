@@ -243,6 +243,23 @@ The original rejected record is never changed to approved. Analysis is capped at
 3 attempts and a recycled candidate that is rejected again is not recycled a
 second time.
 
+### Recycled-photo sticker production
+
+The Recycling page supports a separate die-cut sticker workflow for real,
+compliance-cleared live photos: a recycler-team member inspects the displayed
+photo, the sticker overseer checks the recorded review and safety gates, and
+Dr. Cypher approves the overseer's recommendation. Only then can the existing
+image be staged as a Printful-backed Etsy **draft**; Etsy publishing still
+requires your approval in Live Ops. This workflow does not generate or alter
+the source image, and quarantined or unusable images remain blocked.
+
+Before staging, copy the sticker product/variant IDs from your Printful catalog,
+the physical-sticker taxonomy ID from Etsy, Printful's current unit cost, and
+your actual packed shipping measurements into the sticker settings in `.env`
+(see `.env.example`). Set `PRINTFUL_API_KEY` as well. Sticker production is
+disabled until all settings are present, so IDs and package details are never
+guessed.
+
 ## Arena and Office views
 
 The dashboard arena is a **replay** of the selected recorded run, not live
