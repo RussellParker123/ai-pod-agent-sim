@@ -106,3 +106,23 @@ def cypher_approve(store, record_id: str, images_root: Path) -> Dict:
     })
     store.save()
     return record
+
+
+def validate_sticker_approval(store, record_id: str, images_root: Path) -> Dict:
+    record = _record(store, record_id, images_root)
+    workflow = record.get("sticker_workflow") or {}
+    overseer = workflow.get("overseer") or {}
+    cypher = workflow.get("dr_cypher") or {}
+    checks = overseer.get("checks") or {}
+    if (workflow.get("status") != "approved"
+            or workflow.get("team") != TEAM_ID
+            or not workflow.get("image_reviewed")
+            or overseer.get("agent_id") != OVERSEER_ID
+            or not overseer.get("approved")
+            or not checks
+            or not all(checks.values())
+            or cypher.get("agent_id") != CYPHER_ID
+            or cypher.get("overseer_id") != OVERSEER_ID
+            or not cypher.get("approved")):
+        raise recycling.RecyclingError("A complete recycler-team, overseer, and Dr. Cypher approval chain is required.")
+    return record

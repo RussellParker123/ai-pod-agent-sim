@@ -95,6 +95,10 @@ def test_recycled_sticker_stages_once_after_agent_approvals(sticker_live_env, mo
                 "image_uri": design.image_uri, "status": "pending_approval"}
 
     monkeypatch.setattr(pipeline, "_stage_design", fake_stage)
+    record["sticker_workflow"]["dr_cypher"]["agent_id"] = "other-agent"
+    with pytest.raises(recycling.RecyclingError, match="complete"):
+        pipeline.stage_recycled_sticker(record["record_id"])
+    record["sticker_workflow"]["dr_cypher"]["agent_id"] = sticker_team.CYPHER_ID
     result = pipeline.stage_recycled_sticker(record["record_id"])
     assert result["status"] == "staged"
     assert result["entry"]["product_type"] == "sticker"

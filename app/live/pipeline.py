@@ -782,12 +782,7 @@ def stage_recycled_sticker(record_id: str) -> dict:
     if workflow.get("status") == "staged":
         entry = next((e for e in _load_pending() if e.get("recycling_record_id") == record_id), None)
         return {"status": "already_staged", "entry": entry, "record": record}
-    if workflow.get("status") != "approved" or not (workflow.get("dr_cypher") or {}).get("approved"):
-        raise ValueError("The recycler team, overseer, and Dr. Cypher must approve this photo first.")
-    if store.is_blocked_record(record):
-        raise ValueError("Quarantined or unusable images cannot be made into stickers.")
-    if recycling.safe_image_path(record["image_uri"], IMAGES_DIR) is None:
-        raise ValueError("Original image file is missing or outside data/images.")
+    record = sticker_team.validate_sticker_approval(store, record_id, IMAGES_DIR)
     missing = sticker_configuration_errors()
     if missing:
         raise ValueError("Configure these sticker product settings before staging: " + ", ".join(missing))
