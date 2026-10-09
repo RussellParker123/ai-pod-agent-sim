@@ -20,6 +20,10 @@ def test_run_once_batch_size_seed_and_unique_names(offline_data_dir, monkeypatch
     a, b = (json.loads(open(p, encoding="utf-8").read()) for p in (first, second))
     assert len(a["designs"]) + len(a["recycling"]["skipped_no_image"]) == 8
     assert [d["niche"] for d in a["designs"]] == [d["niche"] for d in b["designs"]]  # seeded
+    themed = json.loads(open(run_simulation.run_once(batch_size=8, seed=7, theme_request="Western"),
+                             encoding="utf-8").read())
+    assert themed["theme_request"] == "Western" and themed["resolved_theme"] == "western desert"
+    assert themed["designs"] and {d["niche"] for d in themed["designs"]} == {"western desert"}
     for record in a["recycling"]["records"]:
         analysis = record["analysis"]
         assert analysis is None or (analysis["image_inspected"] is False and "suggestions" in analysis)
@@ -29,8 +33,21 @@ def test_run_once_batch_size_seed_and_unique_names(offline_data_dir, monkeypatch
 
 
 def test_cli_accepts_batch_size_and_seed():
-    args = run_simulation.build_arg_parser().parse_args(["--batch-size", "6", "--seed", "3"])
-    assert args.batch_size == 6 and args.seed == 3 and not args.real
+    args = run_simulation.build_arg_parser().parse_args(
+        ["--batch-size", "6", "--seed", "3", "--theme", "fall"]
+    )
+    assert args.batch_size == 6 and args.seed == 3 and args.theme == "fall" and not args.real
+
+
+@pytest.mark.parametrize(("request", "expected"), [
+    ("western", ["western desert"]),
+    ("Fall", ["cozy autumn"]),
+    ("a cozy autumn harvest", ["cozy autumn"]),
+    ("celestial cats", ["celestial cats"]),
+    ("", run_simulation.DEFAULT_NICHES),
+])
+def test_theme_request_selects_matching_niche(request, expected):
+    assert run_simulation._niches_for_theme(request, run_simulation.DEFAULT_NICHES) == expected
 
 
 def test_dashboard_without_runs_offers_offline_launch_and_writes_nothing(offline_data_dir):
@@ -44,12 +61,16 @@ def test_dashboard_without_runs_offers_offline_launch_and_writes_nothing(offline
 
 def test_dashboard_launch_creates_and_selects_new_run(offline_data_dir):
     at = AppTest.from_file(DASHBOARD, default_timeout=90).run()
+    at.text_input[0].set_value("western")
     at.number_input[0].set_value(6)
     at.checkbox[0].check()
     at.button[0].click().run()
     assert not at.exception and not at.error
     runs = sorted(offline_data_dir.glob("run_*.json"))
     assert len(runs) == 1
+    payload = json.loads(runs[0].read_text(encoding="utf-8"))
+    assert payload["theme_request"] == "western" and payload["resolved_theme"] == "western desert"
+    assert {d["niche"] for d in payload["designs"]} == {"western desert"}
     assert at.sidebar.selectbox[0].value == runs[0].name
     assert any("saved and selected" in s.value for s in at.success)
     assert at.get("iframe"), "arena iframe should render for the new run"

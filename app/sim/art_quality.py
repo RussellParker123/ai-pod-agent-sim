@@ -90,9 +90,13 @@ NICHE_MOTIFS = {
         "cat and dog sharing a blanket",
     ],
     "cozy autumn": [
-        "steaming mug surrounded by falling maple leaves",
-        "knitted sweater with pumpkin pattern",
-        "mushroom cottage under amber leaves",
+        "winding woodland trail beneath golden and russet autumn trees",
+        "storybook fox beside a pumpkin lantern among fallen leaves",
+        "friendly little ghosts drifting through a moonlit pine forest",
+        "knitted sweater with a small pumpkin and falling-leaf pattern",
+        "mushroom cottage tucked beneath amber leaves and tiny glowing windows",
+        "quiet harvest orchard with pumpkins, curling vines, and distant hills",
+        "tiny deer standing by a leaf-covered path at golden hour",
     ],
     "western desert": [
         "golden-hour trail winding through red-rock mesas and cottonwood trees",

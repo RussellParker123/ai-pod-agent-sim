@@ -52,6 +52,22 @@ DEFAULT_BATCH_SIZE = 24
 MAX_BATCH_SIZE = 200
 
 
+def _niches_for_theme(theme_request, default_niches):
+    """Use an explicit theme as the niche for every new candidate in a run."""
+    theme = str(theme_request or "").strip()
+    if not theme:
+        return list(default_niches)
+    if len(theme) > 100:
+        raise ValueError("theme_request must be 100 characters or fewer")
+
+    lowered = theme.casefold()
+    if any(term in lowered for term in ("western", "wild west", "cowboy", "cowgirl")):
+        return ["western desert"]
+    if any(term in lowered for term in ("fall", "autumn", "harvest", "pumpkin")):
+        return ["cozy autumn"]
+    return [theme]
+
+
 def load_etsy_config() -> dict:
     if not ETSY_CONFIG_PATH.exists():
         raise SystemExit(
@@ -92,6 +108,7 @@ def run_once(
     team: AgentTeam = None,
     batch_size: int = DEFAULT_BATCH_SIZE,
     seed: Optional[int] = None,
+    theme_request: Optional[str] = None,
 ) -> str:
     """Run one batch and save ``data/run_*.json``. ``batch_size`` is the
     number of candidate designs the trend agent proposes; ``seed`` makes the
@@ -112,6 +129,7 @@ def run_once(
             niches = etsy_config.get("niches") or niches
             product_types = tuple(etsy_config.get("product_types") or product_types)
             target_margin = etsy_config.get("target_margin", target_margin)
+    niches = _niches_for_theme(theme_request, niches)
 
     configure_etsy_logging(DATA_DIR / "etsy_api.log")
     etsy_connector = EtsyConnector.from_environment() if etsy_mode else None
@@ -219,6 +237,9 @@ def run_once(
         apply_etsy_fees(all_designs, results, etsy_config.get("fees", {}))
 
     payload = to_serializable(all_designs, results)
+    if theme_request and str(theme_request).strip():
+        payload["theme_request"] = str(theme_request).strip()
+        payload["resolved_theme"] = niches[0]
     payload["research"] = research
     payload["pricing_research"] = pricing_research
     payload["manager"] = manager.report(all_designs, results)
@@ -353,6 +374,8 @@ def build_arg_parser() -> argparse.ArgumentParser:
     p.add_argument("--batch-size", type=int, default=DEFAULT_BATCH_SIZE,
                    help=f"candidate designs proposed by the trend agent (1-{MAX_BATCH_SIZE})")
     p.add_argument("--seed", type=int, default=None, help="seed for reproducible simulated randomness")
+    p.add_argument("--theme", default=None,
+                   help="optional theme for every new design (e.g. western or fall)")
     return p
 
 
@@ -413,5 +436,5 @@ if __name__ == "__main__":
         p = publish_reviewed_run(args.publish_run, real=real, draft_only=args.draft_only)
     else:
         p = run_once(etsy_mode=args.etsy_mode, real=real, draft_only=args.draft_only,
-                     batch_size=args.batch_size, seed=args.seed)
+                     batch_size=args.batch_size, seed=args.seed, theme_request=args.theme)
     print(f"Simulation complete. Output: {p}")

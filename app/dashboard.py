@@ -239,6 +239,8 @@ def offline_launch(container, key):
         st.markdown("**▶ Run an offline simulation**")
         st.caption("Simulated trends, compliance, pricing and sales; no API calls, no image generation, "
                    "no publishing. Saves a new data/run_*.json (older runs are kept).")
+        theme = st.text_input("Theme request (optional)", placeholder="e.g. western, fall, cozy woodland",
+                              max_chars=100, key=f"theme_{key}")
         batch = st.number_input("Candidate designs", min_value=4, max_value=60, value=24, step=1,
                                 key=f"batch_{key}")
         use_seed = st.checkbox("Fixed seed (reproducible)", value=False, key=f"use_seed_{key}")
@@ -250,7 +252,8 @@ def offline_launch(container, key):
         from app.sim.run_simulation import run_once
 
         with st.spinner("Running the offline agent pipeline..."):
-            path = Path(run_once(batch_size=int(batch), seed=int(seed) if use_seed else None))
+            path = Path(run_once(batch_size=int(batch), seed=int(seed) if use_seed else None,
+                                 theme_request=theme))
     except Exception as exc:  # noqa: BLE001 - show the operator what failed
         st.session_state["launch_error"] = f"Offline simulation failed: {type(exc).__name__}: {exc}"
     else:
