@@ -277,27 +277,63 @@ def _stage(tmp_path, monkeypatch, mockup_url):
     return pipeline._stage_design(design, shop), etsy, printful
 
 
-def test_staging_falls_back_to_flat_art_when_mockup_fails(tmp_path, monkeypatch):
-    entry, etsy, printful = _stage(tmp_path, monkeypatch, None)
-    assert entry["mockup_image_url"] is None and entry["mockup_image_uri"] is None
-    assert entry["etsy_image_url"] == "https://example.test/artwork.png"
-    assert etsy.upload_listing_image.call_count == 1
-    etsy.reorder_listing_image.assert_not_called()
-    assert printful.create_sync_product.call_args.kwargs["preview_image_url"] is None
+def test_staging_requires_printful_before_creating_draft(tmp_path, monkeypatch):
+    monkeypatch.setattr(pipeline, "DATA_DIR", tmp_path)
+    artwork = tmp_path / "D1.png"
+    artwork.write_bytes(b"artwork")
+    etsy = Mock()
+    printful = Mock()
+    printful.is_configured.return_value = False
+    monkeypatch.setattr(pipeline, "etsy_client", etsy)
+    monkeypatch.setattr(pipeline, "printful_client", printful)
+    design = Design("D1", "bookish humor", 0.8, image_uri=str(artwork))
+
+    with pytest.raises(RuntimeError, match="PRINTFUL_API_KEY"):
+        pipeline._stage_design(design, {"shop_id": 1})
+
+    etsy.create_draft_listing.assert_not_called()
+
+
+def test_staging_deletes_partial_draft_when_mockup_fails(tmp_path, monkeypatch):
+    monkeypatch.setattr(pipeline, "DATA_DIR", tmp_path)
+    artwork = tmp_path / "D1.png"
+    artwork.write_bytes(b"artwork")
+    etsy = Mock()
+    etsy.create_draft_listing.return_value = {"listing_id": 5}
+    etsy.upload_listing_image.return_value = {
+        "url_fullxfull": "https://example.test/artwork.png", "listing_image_id": 6,
+    }
+    printful = Mock()
+    printful.is_configured.return_value = True
+    printful.generate_mockup.return_value = None
+    monkeypatch.setattr(pipeline, "etsy_client", etsy)
+    monkeypatch.setattr(pipeline, "printful_client", printful)
+    design = Design("D1", "bookish humor", 0.8, product_type="tshirt", image_uri=str(artwork))
+
+    with pytest.raises(RuntimeError, match="incomplete Etsy draft 5 was deleted"):
+        pipeline._stage_design(design, {"shop_id": 1})
+
+    etsy.delete_listing.assert_called_once_with(1, 5)
 
 
 def test_staging_records_local_mockup_even_without_images_dir(tmp_path, monkeypatch):
-    entry, _, _ = _stage(tmp_path, monkeypatch, "https://example.test/mockup.jpg")
+    entry, etsy, _ = _stage(tmp_path, monkeypatch, "https://example.test/mockup.jpg")
+    assert entry["mockup_image_url"] == "https://example.test/mockup.jpg"
+    assert etsy.upload_listing_image.call_count == 2
+    etsy.reorder_listing_image.assert_called_once_with(1, 5, 6, rank=2)
     assert entry["mockup_image_uri"] == str(tmp_path / "images" / "D1_mockup.jpg")
     assert (tmp_path / "images" / "D1_mockup.jpg").read_bytes() == b"mockup"
     assert entry["etsy_flat_image_id"] == 6
 
 
 def test_refresh_mockups_backfills_existing_flat_only_listings(tmp_path, monkeypatch):
-    entry, etsy, printful = _stage(tmp_path, monkeypatch, None)
+    entry, etsy, printful = _stage(tmp_path, monkeypatch, "https://example.test/old-mockup.jpg")
+    entry["mockup_image_url"] = None
+    entry["mockup_image_uri"] = None
     del entry["etsy_flat_image_id"]  # entries staged before this field existed
     done = dict(entry, design_id="D2", mockup_image_url="https://example.test/old.jpg")
-    pipeline._save_pending([entry, done])
+    rejected = dict(entry, design_id="D3", status="rejected", printful_sync_product=None)
+    pipeline._save_pending([entry, done, rejected])
     etsy.reset_mock()
     etsy.get_listing_images.return_value = [
         {"listing_image_id": 6, "rank": 1, "url_fullxfull": "https://example.test/artwork.png"},
@@ -307,16 +343,17 @@ def test_refresh_mockups_backfills_existing_flat_only_listings(tmp_path, monkeyp
 
     refreshed = pipeline.refresh_mockups()
 
-    assert [e["design_id"] for e in refreshed] == ["D1"]
-    printful.generate_mockup.assert_called_once_with(71, 4012, "https://example.test/artwork.png")
-    etsy.upload_listing_image.assert_called_once_with(1, 5, str(tmp_path / "images" / "D1_mockup.jpg"))
-    etsy.reorder_listing_image.assert_called_once_with(1, 5, 6, rank=2)
+    assert [e["design_id"] for e in refreshed] == ["D1", "D3"]
+    assert printful.generate_mockup.call_count == 2
+    assert etsy.upload_listing_image.call_count == 2
+    assert etsy.reorder_listing_image.call_count == 2
     printful.set_sync_product_preview.assert_called_once_with(
         77, "https://example.test/artwork.png", "https://example.test/mockup.jpg"
     )
     saved = {e["design_id"]: e for e in pipeline.list_all()}
     assert saved["D1"]["mockup_image_url"] == "https://example.test/mockup.jpg"
     assert saved["D2"]["mockup_image_url"] == "https://example.test/old.jpg"
+    assert saved["D3"]["mockup_image_url"] == "https://example.test/mockup.jpg"
 
 
 def test_set_sync_product_preview_updates_every_sync_variant(monkeypatch):

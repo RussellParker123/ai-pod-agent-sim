@@ -368,7 +368,7 @@ Copy `.env.example` to `.env` (gitignored, never commit it) and fill in:
 - `ETSY_API_KEY` / `ETSY_SHARED_SECRET` — from your Etsy API app (developers.etsy.com)
 - `ETSY_REDIRECT_URI` — must match the redirect URI registered on that app
 - `OPENAI_API_KEY` — for real AI art generation (optional — falls back to simulated art if unset)
-- `PRINTFUL_API_KEY` — for real printing + shipping (optional — required before any real order is placed)
+- `PRINTFUL_API_KEY` — required to create Etsy listings with product mockups and for real printing + shipping
 
 ### 2. Connect your Etsy shop (one-time OAuth)
 
@@ -398,10 +398,10 @@ python -m app.live.pipeline refresh-mockups [design_id]   # add product photos t
 ```
 
 Each listing's primary photo is a Printful product mockup (the art on the actual
-mug/t-shirt/tote), with the flat artwork kept as photo #2. If mockup generation
-fails, staging still succeeds with the flat artwork only; run `refresh-mockups`
-later (e.g. for totes/t-shirts staged before apparel mockups were reliable) to
-backfill the mockup on Etsy and as the Printful product preview.
+mug/t-shirt/tote), with the flat artwork kept as photo #2. New drafts are not
+created unless the mockup is successfully generated and uploaded; incomplete
+drafts are deleted. Run `refresh-mockups` to backfill older pending, live, or
+rejected listings that only show flat artwork.
 
 Live batches keep the spend safeguards: the Manager greenlights *concepts* before
 any image is generated, so rejected concepts cost nothing and are not recycled. Each

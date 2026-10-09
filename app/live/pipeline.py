@@ -534,8 +534,8 @@ def _attach_mockup(design_id, product_type, shop_id, listing_id, etsy_image_url,
 
 
 def refresh_mockups(design_id: Optional[str] = None) -> List[dict]:
-    """Backfills product photos for already-staged listings (pending or
-    live) that only have the flat artwork -- e.g. totes/t-shirts staged
+    """Backfills product photos for already-staged listings that only have
+    the flat artwork -- e.g. totes/t-shirts staged
     before apparel mockups generated reliably. Adds the mockup as the
     primary Etsy photo, bumps the flat art to rank 2, and sets it as the
     Printful sync product's preview. Best-effort per entry; entries whose
@@ -546,7 +546,9 @@ def refresh_mockups(design_id: Optional[str] = None) -> List[dict]:
     for entry in pending:
         if design_id is not None and entry.get("design_id") != design_id:
             continue
-        if entry.get("mockup_image_url") or entry.get("status") not in ("pending_approval", "live"):
+        if entry.get("mockup_image_url") or entry.get("status") not in (
+            "pending_approval", "live", "rejected",
+        ):
             continue
         flat_image_id = entry.get("etsy_flat_image_id")
         if not flat_image_id and printful_client.is_configured():
@@ -578,6 +580,11 @@ def refresh_mockups(design_id: Optional[str] = None) -> List[dict]:
 
 
 def _stage_design(design, shop: Dict) -> dict:
+    if not printful_client.is_configured():
+        raise RuntimeError("Set PRINTFUL_API_KEY before creating an Etsy listing with a product mockup.")
+    if not design.image_uri or not Path(design.image_uri).is_file():
+        raise RuntimeError("A local design image is required to create a product mockup.")
+
     taxonomy_id = PRODUCT_TAXONOMY.get(design.product_type)
     if taxonomy_id is None:
         raise RuntimeError(f"No Etsy taxonomy mapping for product_type={design.product_type!r}")
@@ -610,16 +617,29 @@ def _stage_design(design, shop: Dict) -> dict:
     )
     listing_id = listing["listing_id"]
 
-    etsy_image_url = None
-    flat_design_image_id = None
-    if design.image_uri and Path(design.image_uri).exists():
+    try:
         image_resp = etsy_client.upload_listing_image(shop["shop_id"], listing_id, design.image_uri)
         etsy_image_url = image_resp.get("url_fullxfull") or image_resp.get("url_570xN")
         flat_design_image_id = image_resp.get("listing_image_id")
-
-    mockup_image_url, mockup_image_uri = _attach_mockup(
-        design.design_id, design.product_type, shop["shop_id"], listing_id, etsy_image_url, flat_design_image_id
-    )
+        if not etsy_image_url:
+            raise RuntimeError("Etsy did not return a hosted URL for the design image.")
+        mockup_image_url, mockup_image_uri = _attach_mockup(
+            design.design_id, design.product_type, shop["shop_id"], listing_id,
+            etsy_image_url, flat_design_image_id,
+        )
+        if not mockup_image_url:
+            raise RuntimeError("Printful could not generate or upload the product mockup.")
+    except Exception as exc:
+        try:
+            etsy_client.delete_listing(shop["shop_id"], listing_id)
+        except Exception as cleanup_exc:
+            raise RuntimeError(
+                f"Could not add a product mockup, and incomplete Etsy draft {listing_id} "
+                "could not be deleted."
+            ) from cleanup_exc
+        raise RuntimeError(
+            f"Could not add a product mockup; incomplete Etsy draft {listing_id} was deleted."
+        ) from exc
 
     printful_product = None
     if printful_client.is_configured() and etsy_image_url:

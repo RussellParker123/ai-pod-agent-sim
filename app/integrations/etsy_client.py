@@ -66,6 +66,12 @@ def _patch(path: str, json_body: Optional[dict] = None) -> dict:
     return resp.json()
 
 
+def _delete(path: str) -> dict:
+    resp = requests.delete(f"{BASE_URL}{path}", headers=_headers(), timeout=30)
+    _raise_for_status(resp)
+    return resp.json() if resp.content else {}
+
+
 def get_me() -> dict:
     """Returns the authenticated Etsy user's id and their shop.
 
@@ -282,6 +288,11 @@ def create_draft_listing(shop_id: int, listing: dict) -> dict:
     body = dict(listing)
     body.setdefault("state", "draft")
     return _post(f"/shops/{shop_id}/listings", json_body=body, params={"legacy": "false"})
+
+
+def delete_listing(shop_id: int, listing_id: int) -> dict:
+    """Deletes an incomplete draft listing that could not be given a product mockup."""
+    return _delete(f"/shops/{shop_id}/listings/{listing_id}")
 
 
 def upload_listing_image(shop_id: int, listing_id: int, image_path: str, rank: int = 1) -> dict:
