@@ -2,6 +2,9 @@
 
 import html
 
+from app.sim.characters import DrCypher
+from app.utils.dr_cipher import get_dr_cipher_svg
+
 
 MANAGER_NODE = ("manager", "🧠", "DR. CYPHER · MANAGER")
 STAGE_NODES = [
@@ -16,6 +19,22 @@ STAGE_NODES = [
     ("etsy", "🛰️", "ETSY DRAFT"),
     ("printful", "🏭", "PRINTFUL FAB LINK"),
 ]
+
+STAGE_LOCATIONS = {
+    "etsy_connect": "command",
+    "trend": "trend",
+    "prompt": "prompt",
+    "compliance": "compliance",
+    "mockup": "mockup",
+    "pricing": "pricing",
+    "manager": "approval",
+    "image_team": "image",
+    "image": "image",
+    "etsy": "approval",
+    "manager_publish": "approval",
+    "printful": "approval",
+    "complete": "command",
+}
 
 STAGE_STATUSES = ("idle", "active", "done", "error")
 ENTRY_STATUSES = {
@@ -41,10 +60,28 @@ def _node_html(key: str, icon: str, label: str, stage_state: dict) -> str:
     )
 
 
-def render_live_console(stage_state: dict, log_lines: list) -> str:
+def render_live_console(stage_state: dict, log_lines: list, character: dict = None) -> str:
     """Build self-contained console markup; logs are escaped at the render boundary."""
+    character_status = stage_status({"manager": (character or {}).get("status", "idle")}, "manager")
+    character = DrCypher.from_dict(character).to_dict()
     manager = _node_html(*MANAGER_NODE, stage_state)
     nodes = "".join(_node_html(*node, stage_state) for node in STAGE_NODES)
+    avatar = get_dr_cipher_svg().replace(
+        'style="max-width: 280px; max-height: 420px;"',
+        'style="width:76px;height:114px;max-width:100%;"',
+    )
+    presence = (
+        f'<div class="cypher-presence {character_status}" role="group" '
+        f'aria-label="{html.escape(character["display_name"])} live character">'
+        f'<div class="cypher-avatar" role="img" aria-label="{html.escape(character["display_name"])}">{avatar}</div>'
+        '<div class="cypher-details">'
+        f'<div class="cypher-name">🧪 {html.escape(character["display_name"])} · LIVE</div>'
+        f'<div class="cypher-meta">{html.escape(character["title"])} · {html.escape(character["mood"])} · '
+        f'{html.escape(character["location"])}</div>'
+        f'<div class="cypher-activity">{html.escape(character["activity"])}</div>'
+        f'<div class="cypher-line">“{html.escape(character["line"])}”</div>'
+        '</div></div>'
+    )
     log_html = "".join(
         f'<div class="line">{html.escape(str(line))}</div>' for line in log_lines
     ) or '<div class="line">&gt; standing by...</div>'
@@ -58,6 +95,17 @@ def render_live_console(stage_state: dict, log_lines: list) -> str:
           margin-bottom:12px;text-shadow:0 0 8px #00ff4180}
         .command-deck{display:flex;justify-content:center;margin-bottom:12px}
         .command-deck .node{max-width:340px;width:100%;border:2px solid #ff6b9d}
+        .cypher-presence{display:flex;align-items:center;gap:12px;margin:0 0 12px;padding:10px 14px;
+          border:1px solid #ff6b9d88;border-radius:12px;background:linear-gradient(110deg,#2d1b4e,#1a2d4e);
+          color:#e7f0ff;min-height:128px}
+        .cypher-presence.active{border-color:#ffaa00;box-shadow:0 0 12px #ffaa0066}
+        .cypher-presence.done{border-color:#00ff41}
+        .cypher-presence.error{border-color:#ff6b9d;box-shadow:0 0 12px #ff6b9d66}
+        .cypher-avatar{flex:0 0 76px;line-height:0}
+        .cypher-name{color:#ff6b9d;font-weight:bold;letter-spacing:.5px}
+        .cypher-meta{font-size:11px;color:#9edfff;margin-top:4px}
+        .cypher-activity{font-size:12px;color:#9dffc1;margin-top:6px}
+        .cypher-line{font-size:12px;margin-top:4px;overflow-wrap:anywhere}
         .cyber-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,132px),1fr));gap:9px}
         .node{min-width:0;border:1px solid #00ccff88;border-radius:11px;padding:10px 6px;text-align:center;
           background:linear-gradient(145deg,#1a2d4e,#2d1b4e);overflow-wrap:anywhere}
@@ -76,11 +124,13 @@ def render_live_console(stage_state: dict, log_lines: list) -> str:
         .term .line{padding:1px 0}
         @media(prefers-reduced-motion:no-preference){.node.active{animation:live-pulse 1.5s ease-in-out infinite}}
         @keyframes live-pulse{50%{box-shadow:0 0 14px #ffaa0088}}
+        @media(prefers-reduced-motion:reduce){.dr-cipher,.dr-cipher-glow{animation:none!important}}
         @media(max-width:420px){.cyber-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
         </style>"""
         + '<div class="cyber-wrap">'
         + '<div class="cyber-title">⚡ LIVE OPS ARENA · EVENT-DRIVEN STAGE STATUS ⚡</div>'
         + f'<div class="command-deck">{manager}</div>'
+        + presence
         + f'<div class="cyber-grid">{nodes}</div>'
         + f'<div class="term" role="log" aria-label="Live event log">{log_html}</div>'
         + "</div>"

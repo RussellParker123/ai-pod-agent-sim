@@ -25,11 +25,13 @@ from app.live import order_sync, pipeline
 from app.live_ops_presentation import (
     MANAGER_NODE,
     STAGE_NODES,
+    STAGE_LOCATIONS,
     render_live_console,
     registry_counts,
     stage_status,
     entry_status,
 )
+from app.sim.characters import DrCypher
 
 st.title("Live Ops")
 st.markdown(
@@ -107,8 +109,10 @@ run_clicked = st.button("▶ Run live batch (creates real Etsy DRAFT listings, n
 console_slot = st.empty()
 stage_state = {key: "idle" for key, _, _ in STAGE_NODES + [MANAGER_NODE]}
 log_lines: list = []
+cypher_state = DrCypher().to_dict()
+cypher_state["status"] = "idle"
 with console_slot:
-    components.html(render_live_console(stage_state, log_lines), height=480, scrolling=True)
+    components.html(render_live_console(stage_state, log_lines, cypher_state), height=560, scrolling=True)
 
 st.caption("🖼️ Live art feed — thumbnails appear here the instant each artist agent finishes a piece.")
 gallery_slot = st.empty()
@@ -134,9 +138,23 @@ if run_clicked:
                 active_stage = stage if stage_state[stage] == "active" else (
                     None if active_stage == stage else active_stage
                 )
+            if isinstance(event.get("character"), dict):
+                cypher_state.update(DrCypher.from_dict(event["character"]).to_dict())
+            cypher_state["status"] = "done" if stage == "complete" else "active"
+            cypher_state["location"] = STAGE_LOCATIONS.get(stage, cypher_state["location"])
+            if stage == "complete":
+                cypher_state["activity"] = "Live batch complete"
+                cypher_state["location"] = cypher_state["home"]
+            elif not isinstance(event.get("character"), dict):
+                cypher_state["activity"] = str(event.get("message", ""))
+                cypher_state["line"] = cypher_state["activity"]
             log_lines.append(f"> [{stage}] {event['message']}")
             with console_slot:
-                components.html(render_live_console(stage_state, log_lines[-10:]), height=480, scrolling=True)
+                components.html(
+                    render_live_console(stage_state, log_lines[-10:], cypher_state),
+                    height=560,
+                    scrolling=True,
+                )
 
             image_uri = event.get("image_uri")
             if image_uri and not image_uri.startswith("sim://") and Path(image_uri).exists():
@@ -150,16 +168,36 @@ if run_clicked:
             time.sleep(0.25)  # just pacing for readability — every event above is real work already done
         st.success(f"Queued {len(queued)} design(s) for approval.")
     except NotConfiguredError as e:
+        cypher_state.update(
+            status="error",
+            mood="exasperated",
+            activity="Live operations halted",
+            line=str(e),
+        )
         if active_stage:
             stage_state[active_stage] = "error"
             with console_slot:
-                components.html(render_live_console(stage_state, log_lines[-10:]), height=480, scrolling=True)
+                components.html(
+                    render_live_console(stage_state, log_lines[-10:], cypher_state),
+                    height=560,
+                    scrolling=True,
+                )
         st.error(str(e))
     except Exception as e:  # noqa: BLE001 - surface any live-pipeline error to the operator
+        cypher_state.update(
+            status="error",
+            mood="exasperated",
+            activity="Live operations halted",
+            line=f"Live batch failed: {e}",
+        )
         if active_stage:
             stage_state[active_stage] = "error"
             with console_slot:
-                components.html(render_live_console(stage_state, log_lines[-10:]), height=480, scrolling=True)
+                components.html(
+                    render_live_console(stage_state, log_lines[-10:], cypher_state),
+                    height=560,
+                    scrolling=True,
+                )
         st.error(f"Live batch failed: {e}")
 
 st.markdown("---")

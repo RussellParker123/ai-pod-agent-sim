@@ -383,6 +383,7 @@ def run_live_batch_stream(
         f"will get real art. {len(designs) - len(approved)} concept-only rejection(s) have no image and are not "
         "sent to recycling.",
         "count": len(greenlit),
+        "character": manager.character.to_dict(),
     }
 
     before_team = len(greenlit)
