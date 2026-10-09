@@ -36,6 +36,17 @@ def test_live_console_empty_state_and_unknown_status_are_safe():
     assert "None" not in markup
 
 
+def test_live_console_shows_animated_artist_room_only_during_image_generation():
+    idle = render_live_console({"image": "idle"}, [])
+    active = render_live_console({"image": "active"}, [])
+
+    assert "artist-room" not in idle
+    assert 'class="artist-room" role="status"' in active
+    assert "LIVE ARTIST ROOM · PAINTING IN PROGRESS" in active
+    assert "👩‍🎨" in active and "🧑‍🎨" in active
+    assert "@keyframes brush-paint" in active
+
+
 def test_live_console_shows_character_avatar_and_live_event_dialogue_safely():
     character = DrCypher().to_dict()
     character.update(
