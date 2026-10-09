@@ -36,7 +36,7 @@ from app.sim import sticker_team
 from app.sim.agents import Design, compliance_agent, mockup_agent, pricing_agent
 from app.sim.art_quality import assess_concept, assess_generated_image, refine_designs, revise_for_compliance
 from app.sim.manager import ManagerAgent
-from app.sim.run_simulation import load_etsy_config
+from app.sim.run_simulation import _niches_for_theme, load_etsy_config
 
 PENDING_APPROVALS_PATH = DATA_DIR / "pending_approvals.json"
 IMAGE_MANIFEST_PATH = DATA_DIR / "image_manifest.json"
@@ -247,13 +247,13 @@ def _build_image_team(designs: List, team_niches: int, team_size: int) -> List:
     return expanded
 
 
-def run_live_batch(k: int = 6) -> List[dict]:
+def run_live_batch(k: int = 6, theme_request: Optional[str] = None) -> List[dict]:
     """Generates up to k new greenlit designs, creates Etsy draft listings +
     Printful mockups for each, and appends them to the pending-approval queue.
     Returns the newly queued entries. (Drains run_live_batch_stream(); use
     that directly for step-by-step progress, e.g. in a live UI.)"""
     queued: List[dict] = []
-    for event in run_live_batch_stream(k):
+    for event in run_live_batch_stream(k, theme_request=theme_request):
         if event["stage"] == "complete":
             queued = event["queued"]
     return queued
@@ -266,6 +266,7 @@ def run_live_batch_stream(
     manager_auto_publish: bool = False,
     auto_publish_threshold: float = 0.85,
     image_assessor=None,
+    theme_request: Optional[str] = None,
 ):
     """Same pipeline as run_live_batch(), but yields a progress event after
     each agent stage completes so a UI can show the real agents working
@@ -307,6 +308,7 @@ def run_live_batch_stream(
     {"stage": "complete", "queued": [...]}.
     """
     config = load_etsy_config()
+    niches = _niches_for_theme(theme_request, config["niches"])
 
     yield {"stage": "etsy_connect", "status": "active", "message": "Connecting to your Etsy shop..."}
     shop = _get_shop_context()
@@ -323,9 +325,9 @@ def run_live_batch_stream(
     yield {
         "stage": "trend",
         "status": "active",
-        "message": f"Scouting {k * 4} candidate designs across your niches ({trend_note})...",
+        "message": f"Scouting {k * 4} candidate designs across {', '.join(niches)} ({trend_note})...",
     }
-    designs = trend_agent_live(niches=config["niches"], k=k * 4)
+    designs = trend_agent_live(niches=niches, k=k * 4)
     designs = manager.review_trends(designs)
     yield {
         "stage": "trend",

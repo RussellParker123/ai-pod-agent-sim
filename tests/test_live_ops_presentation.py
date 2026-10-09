@@ -110,13 +110,18 @@ def test_connected_empty_page_does_not_execute_any_action_on_render(monkeypatch)
     from app.live import order_sync, pipeline
 
     calls = []
+
+    def fake_stream(**kwargs):
+        calls.append(kwargs)
+        yield {"stage": "complete", "queued": [], "message": "done"}
+
     monkeypatch.setattr(etsy_auth, "is_connected", lambda: True)
     monkeypatch.setattr(openai_image, "is_configured", lambda: False)
     monkeypatch.setattr(printful_client, "is_configured", lambda: False)
     monkeypatch.setattr(pipeline, "list_all", lambda: [])
     monkeypatch.setattr(pipeline, "list_pending", lambda: [])
     monkeypatch.setattr(pipeline, "list_image_archive", lambda: [])
-    monkeypatch.setattr(pipeline, "run_live_batch_stream", lambda **_: calls.append("batch"))
+    monkeypatch.setattr(pipeline, "run_live_batch_stream", fake_stream)
     monkeypatch.setattr(pipeline, "approve_and_publish", lambda *_: calls.append("publish"))
     monkeypatch.setattr(pipeline, "reject", lambda *_args, **_kwargs: calls.append("reject"))
     monkeypatch.setattr(pipeline, "hold_archive_image_for_reuse", lambda *_: calls.append("reuse"))
@@ -130,3 +135,10 @@ def test_connected_empty_page_does_not_execute_any_action_on_render(monkeypatch)
     assert app.number_input[0].value == 6
     assert app.checkbox[0].value is False
     assert calls == []
+
+    theme = next(widget for widget in app.text_input if widget.label == "Theme request for this live batch")
+    assert theme.value == ""
+    theme.set_value("fall")
+    next(button for button in app.button if button.label.startswith("▶ Run live batch")).click().run()
+    assert not app.exception
+    assert calls[0]["theme_request"] == "fall"

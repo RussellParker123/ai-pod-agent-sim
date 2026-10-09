@@ -95,6 +95,12 @@ with st.expander("🤖 Manager auto-publish (Dr. Cypher decides, you're the fall
         "its own highest-confidence designs live on its own — anything below the confidence "
         "threshold still falls back to you for manual review, exactly like today."
     )
+    theme_request = st.text_input(
+        "Theme request for this live batch",
+        placeholder="e.g. fall/autumn, western, cozy woodland",
+        max_chars=100,
+        help="Optional. Western and fall requests focus the batch on matching art themes.",
+    )
     manager_auto_publish = st.checkbox("Let Dr. Cypher auto-publish high-confidence designs", value=False)
     auto_publish_threshold = st.slider(
         "Manager confidence score required to auto-publish",
@@ -128,6 +134,7 @@ if run_clicked:
             team_size=int(team_size),
             manager_auto_publish=manager_auto_publish,
             auto_publish_threshold=auto_publish_threshold,
+            theme_request=theme_request,
         ):
             if event["stage"] == "complete":
                 queued = event["queued"]
