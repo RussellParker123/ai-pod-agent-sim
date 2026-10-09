@@ -221,3 +221,23 @@ def test_real_time_loop_moves_agents_and_cypher_and_controls_work(browser, tmp_p
     box = page.query_selector("#c").bounding_box()
     assert box["width"] <= 420 and box["height"] > 0
     assert errors == []
+
+
+def test_image_studio_shows_artist_painting_active_work(browser, tmp_path):
+    design = {"id": "D1", "niche": "cats", "flagged": False, "approved": True, "profit": 1.0,
+              "path": ["image"], "resolution": "completed"}
+    page, errors = open_arena(browser, build_arena_html([design]), tmp_path)
+    painting = page.evaluate("""() => {
+      const ctx = document.querySelector('#c').getContext('2d');
+      const original = ctx.fillText;
+      const labels = [];
+      ctx.fillText = function(text, ...args) {
+        labels.push(String(text));
+        return original.call(this, text, ...args);
+      };
+      arenaDebug.advance(0.2);
+      return labels;
+    }""")
+    assert any(label.startswith("PAINTING · D1") for label in painting)
+    assert page.evaluate("() => arenaDebug.summary().rooms.image.jobs") == 1
+    assert errors == []

@@ -707,17 +707,43 @@ function drawRoom(r) {
   ctx.fillStyle = c; ctx.font = '11px Courier New'; ctx.fillText('● ' + stt, r.x + 8, r.y + 36);
   ctx.fillStyle = '#ffaa00'; ctx.fillText('queue ' + sn.queue.length + ' · done ' + sn.processed + '/' + sn.expected + ' · staff ' + staff(r.key).length, r.x + 8, r.y + 52);
   sn.jobs.slice(0, 3).forEach((j, i) => {
-    const y = r.y + 58 + i * 13, w = fac ? 150 : r.w - 16;
+    const y = r.y + 58 + i * 13, w = fac ? 150 : r.key === 'image' ? 106 : r.w - 16;
     ctx.fillStyle = '#0a0e27'; ctx.fillRect(r.x + 8, y, w, 10);
     ctx.fillStyle = '#00ff41'; ctx.fillRect(r.x + 8, y, w * Math.min(j.prog, 1), 10);
-    ctx.fillStyle = '#ffffff'; ctx.font = '9px Courier New'; ctx.fillText(clip(j.d.id + ' · ' + j.ag.id, 30), r.x + 11, y + 8);
+    ctx.fillStyle = '#ffffff'; ctx.font = '9px Courier New'; ctx.fillText(clip(j.d.id + ' · ' + j.ag.id, r.key === 'image' ? 18 : 30), r.x + 11, y + 8);
   });
+  if (r.key === 'image' && sn.jobs.length) drawImageArtist(r, sn.jobs[0]);
   if (fac) {
     ctx.fillStyle = '#7dff9b'; ctx.font = '10px Courier New';
     ctx.fillText('plans reviewed: ' + st.plansDone.length + '/' + sn.expected + ' (click for details)', r.x + 170, r.y + 66);
     const lp = st.plansDone[st.plansDone.length - 1];
     if (lp) ctx.fillText(clip('last: ' + lp.design + ' → ' + lp.text, 40), r.x + 170, r.y + 80);
   }
+}
+function drawImageArtist(r, job) {
+  const boardX = r.x + r.w - 42, boardY = r.y + 91, ground = r.y + 137;
+  const artistX = r.x + r.w - 64, artistY = ground - 12, phase = Math.sin(st.t * 12) * 3;
+  ctx.fillStyle = '#b98250'; ctx.fillRect(boardX, boardY, 25, 22);
+  ctx.strokeStyle = '#f2d7a4'; ctx.lineWidth = 2; ctx.strokeRect(boardX, boardY, 25, 22);
+  const colors = ['#ff6b9d', '#00ccff', '#ffaa00', '#7dff9b', '#b58cff', '#fff176'];
+  const strokes = Math.max(1, Math.ceil(Math.min(job.prog, 1) * colors.length));
+  for (let i = 0; i < strokes; i++) {
+    const sx = boardX + 4 + (i % 3) * 7, sy = boardY + 5 + Math.floor(i / 3) * 9;
+    ctx.strokeStyle = colors[i]; ctx.lineWidth = 2.5; ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.moveTo(sx, sy); ctx.quadraticCurveTo(sx + 4, sy + phase, sx + 7, sy + (i % 2 ? 3 : -2)); ctx.stroke();
+  }
+  ctx.lineCap = 'round'; ctx.strokeStyle = '#d4b08c'; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(boardX + 4, boardY + 22); ctx.lineTo(boardX + 1, ground); ctx.lineTo(boardX + 23, ground); ctx.lineTo(boardX + 21, boardY + 22); ctx.stroke();
+  ctx.fillStyle = '#ffd9b3'; ctx.beginPath(); ctx.arc(artistX, artistY - 10, 5, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#ff6b9d'; ctx.fillRect(artistX - 5, artistY - 5, 10, 12);
+  ctx.strokeStyle = '#d4b08c'; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(artistX - 2, artistY + 7); ctx.lineTo(artistX - 5, ground);
+  ctx.moveTo(artistX + 2, artistY + 7); ctx.lineTo(artistX + 5, ground);
+  ctx.moveTo(artistX + 4, artistY - 2); ctx.lineTo(boardX - 2, boardY + 13 + phase); ctx.stroke();
+  ctx.strokeStyle = '#ffaa00'; ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.moveTo(boardX - 5, boardY + 16 + phase); ctx.lineTo(boardX + 1, boardY + 13 + phase); ctx.stroke();
+  ctx.fillStyle = '#7dff9b'; ctx.font = '8px Courier New';
+  ctx.fillText('PAINTING · ' + clip(job.d.id, 8), r.x + 112, r.y + 147);
 }
 function drawOps() {
   const o = CFG.ops;
