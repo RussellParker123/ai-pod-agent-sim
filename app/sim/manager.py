@@ -21,6 +21,7 @@ PRODUCT_FIT = {
     "retro outdoors": {"tshirt": 0.95, "mug": 0.7, "tote": 0.7},
     "pet lovers": {"mug": 0.85, "tshirt": 0.85, "tote": 0.8},
     "cozy autumn": {"mug": 0.9, "tshirt": 0.7, "tote": 0.7},
+    "western desert": {"mug": 0.75, "tshirt": 0.95, "tote": 0.8},
 }
 
 COACH_TIPS = {

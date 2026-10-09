@@ -25,6 +25,7 @@ PRODUCT_WORDS = {
 STYLE_WORDS = {
     "minimalist", "retro", "vintage", "boho", "cozy", "funny", "cute",
     "floral", "geometric", "watercolor", "typography", "line art",
+    "western", "southwestern",
 }
 STOPWORDS = {"the", "and", "for", "with", "gift", "a", "of", "to", "in", "your"}
 

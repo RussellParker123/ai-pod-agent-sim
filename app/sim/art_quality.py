@@ -94,6 +94,11 @@ NICHE_MOTIFS = {
         "knitted sweater with pumpkin pattern",
         "mushroom cottage under amber leaves",
     ],
+    "western desert": [
+        "sunlit saguaro cactus beneath a desert sunset",
+        "roadrunner crossing a red-rock mesa",
+        "horseshoe and wildflowers in a simple ranch badge",
+    ],
 }
 GENERIC_MOTIFS = [
     "badge-style emblem with one simple central icon",
@@ -118,6 +123,8 @@ PALETTES = {
     "watercolor": "soft sage, blush, slate blue, charcoal outline",
     "coffee": "espresso brown, latte tan, cream, black",
     "pet": "warm ginger, soft gray, cream, charcoal",
+    "western": "terracotta, turquoise, sandstone, cream, dark brown",
+    "southwestern": "terracotta, turquoise, sandstone, cream, dark brown",
 }
 DEFAULT_PALETTE = "3-4 flat colors with one dark anchor color"
 
