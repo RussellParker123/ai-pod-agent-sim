@@ -275,6 +275,14 @@ def build_brief(
         "target_product": target,
         "allowed_products": list(product_types),
         "composition": "one focal subject, centered, generous margin, readable at thumbnail size",
+        "art_direction": (
+            "Create polished, handcrafted giftable artwork rather than generic clip art. When the "
+            "theme suits it, use a cozy storybook mood with layered watercolor or gouache texture, "
+            "warm natural color harmony, and a few charming secondary details; adapt the finish to "
+            "the selected style and palette. Keep a clear focal hierarchy, distinctive silhouette, "
+            "generous negative space, and print-safe detail. Make standalone printable artwork, not "
+            "a product photo or mockup, and do not copy any reference design."
+        ),
         "style": style,
         "palette": palette,
         "legibility": {
@@ -299,6 +307,7 @@ def render_prompt(brief: Dict) -> str:
         f"Original {brief.get('style', 'vector')} illustration for a {product} print: "
         f"{brief.get('motif') or brief.get('concept')} ({brief.get('niche')} theme).",
         f"Composition: {brief.get('composition')}.",
+        f"Art direction: {brief.get('art_direction', 'clear visual hierarchy, crisp silhouette, intentional detail and negative space')}.",
         f"Palette: {brief.get('palette')}.",
         f"Legibility: {brief.get('legibility', {}).get('rule')}.",
         f"Print: {spec.get('print_area')}; background {spec.get('background')}.",

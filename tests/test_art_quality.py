@@ -26,12 +26,13 @@ def test_brief_is_structured_product_aware_and_research_fed():
     d = _design()
     prompt_agent([d], research=RESEARCH, product_types=("mug", "tshirt", "tote"))
     brief = d.brief
-    for key in ("niche", "concept", "motif", "target_product", "composition", "style", "palette",
+    for key in ("niche", "concept", "motif", "target_product", "composition", "art_direction", "style", "palette",
                 "legibility", "print_constraints", "originality", "reviewer_feedback"):
         assert key in brief
     assert brief["target_product"] == "mug"  # best product-fit for coffee culture
     assert brief["research_signals"]["top_styles"] == ["retro"]
     assert "Print:" in d.prompt and "no logos" in d.prompt.lower()
+    assert "distinctive silhouette" in d.prompt and "negative space" in d.prompt
     check = assess_concept(d)
     assert check["status"] == "pass" and check["image_inspected"] is False
     assert {c["name"] for c in check["checks"]} >= {"protected_terms", "product_fit", "legibility",
@@ -177,4 +178,5 @@ def test_live_prompt_agent_uses_brief_and_falls_back_to_template(monkeypatch):
     d = _design(prompt="sleepy fox with a latte")
     gpt_agents.prompt_agent_live([d], product_types=("mug", "tote"))
     assert '"target_product": "mug"' in sent[0] and "reviewer_feedback" in sent[0]
+    assert "art_direction" in sent[0]
     assert d.prompt == render_prompt(d.brief)

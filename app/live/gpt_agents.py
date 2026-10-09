@@ -32,7 +32,7 @@ TREND_SYSTEM_PROMPT = (
 
 PROMPT_SYSTEM_PROMPT = (
     "You are the Prompt Agent for a solo print-on-demand Etsy shop. You receive a structured "
-    "creative brief as JSON (niche, concept, focal motif, target product, composition, style, "
+    "creative brief as JSON (niche, concept, focal motif, target product, composition, art direction, style, "
     "palette, legibility limits, print constraints, originality guardrails, things to avoid and "
     "reviewer feedback). Write ONE original art-generation prompt (2-4 sentences) that follows "
     "the brief exactly: one focal subject sized for the target product's print area, the given "
@@ -111,7 +111,7 @@ def trend_agent_live(niches: List[str], k: int = 24) -> List[Design]:
 
 
 def _brief_for_gpt(brief: dict) -> dict:
-    keys = ("niche", "concept", "motif", "target_product", "composition", "style", "palette",
+    keys = ("niche", "concept", "motif", "target_product", "composition", "art_direction", "style", "palette",
             "legibility", "print_constraints", "originality", "avoid", "reviewer_feedback")
     return {k: brief.get(k) for k in keys}
 
