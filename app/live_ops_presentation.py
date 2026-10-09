@@ -1,0 +1,106 @@
+"""Presentation helpers for the Live Ops page."""
+
+import html
+
+
+MANAGER_NODE = ("manager", "🧠", "DR. CYPHER · MANAGER")
+STAGE_NODES = [
+    ("etsy_connect", "📡", "ETSY UPLINK"),
+    ("trend", "📈", "TREND SCANNER"),
+    ("prompt", "⌨️", "PROMPT FORGE"),
+    ("compliance", "🛡️", "COMPLIANCE DAEMON"),
+    ("mockup", "🧵", "MOCKUP RENDER"),
+    ("pricing", "💠", "PRICE CORE"),
+    ("image_team", "🧑‍🤝‍🧑", "ART TEAM ASSEMBLY"),
+    ("image", "🖼️", "ART SYNTH · OPENAI"),
+    ("etsy", "🛰️", "ETSY DRAFT"),
+    ("printful", "🏭", "PRINTFUL FAB LINK"),
+]
+
+STAGE_STATUSES = ("idle", "active", "done", "error")
+ENTRY_STATUSES = {
+    "pending_approval": "Draft · awaiting review",
+    "live": "Published",
+    "rejected": "Rejected",
+}
+
+
+def stage_status(stage_state: dict, key: str) -> str:
+    """Return a safe visible state label for a known stage."""
+    status = stage_state.get(key, "idle")
+    return status if status in STAGE_STATUSES else "idle"
+
+
+def _node_html(key: str, icon: str, label: str, stage_state: dict) -> str:
+    status = stage_status(stage_state, key)
+    return (
+        f'<div class="node {status}" aria-label="{html.escape(label)}: {status.upper()}">'
+        f'<div class="icon" aria-hidden="true">{icon}</div>'
+        f'<div class="label">{html.escape(label)}</div>'
+        f'<div class="status-label">{status.upper()}</div></div>'
+    )
+
+
+def render_live_console(stage_state: dict, log_lines: list) -> str:
+    """Build self-contained console markup; logs are escaped at the render boundary."""
+    manager = _node_html(*MANAGER_NODE, stage_state)
+    nodes = "".join(_node_html(*node, stage_state) for node in STAGE_NODES)
+    log_html = "".join(
+        f'<div class="line">{html.escape(str(line))}</div>' for line in log_lines
+    ) or '<div class="line">&gt; standing by...</div>'
+    return (
+        """<style>
+        *{box-sizing:border-box}
+        .cyber-wrap{width:100%;overflow:hidden;background:linear-gradient(135deg,#0a0e27,#1a1a3e 55%,#2d1b4e);
+          border:1px solid #00ccff;border-radius:14px;padding:clamp(10px,2vw,18px);color:#e7f0ff;
+          font-family:'Courier New',monospace;box-shadow:0 0 18px #00ccff33}
+        .cyber-title{color:#00ff41;letter-spacing:clamp(1px,.3vw,3px);font-size:clamp(12px,2vw,16px);
+          margin-bottom:12px;text-shadow:0 0 8px #00ff4180}
+        .command-deck{display:flex;justify-content:center;margin-bottom:12px}
+        .command-deck .node{max-width:340px;width:100%;border:2px solid #ff6b9d}
+        .cyber-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,132px),1fr));gap:9px}
+        .node{min-width:0;border:1px solid #00ccff88;border-radius:11px;padding:10px 6px;text-align:center;
+          background:linear-gradient(145deg,#1a2d4e,#2d1b4e);overflow-wrap:anywhere}
+        .node .icon{font-size:22px}
+        .node .label{font-size:clamp(9px,1.3vw,11px);color:#c6dbff;letter-spacing:.5px;margin-top:4px}
+        .status-label{display:inline-block;margin-top:7px;padding:2px 7px;border-radius:12px;
+          font-size:10px;font-weight:bold;letter-spacing:.6px;color:#e7f0ff;background:#475569}
+        .node.active{border-color:#ffaa00;box-shadow:0 0 12px #ffaa0066}
+        .node.active .status-label{color:#1a1a3e;background:#ffaa00}
+        .node.done{border-color:#00ff41}
+        .node.done .status-label{color:#0a0e27;background:#00ff41}
+        .node.error{border-color:#ff6b9d;box-shadow:0 0 12px #ff6b9d66}
+        .node.error .status-label{color:#fff;background:#a91b54}
+        .term{background:#070914;border:1px solid #00ccff88;border-radius:8px;padding:9px 10px;
+          height:112px;margin-top:12px;overflow:auto;font-size:12px;color:#9dffc1;overflow-wrap:anywhere}
+        .term .line{padding:1px 0}
+        @media(prefers-reduced-motion:no-preference){.node.active{animation:live-pulse 1.5s ease-in-out infinite}}
+        @keyframes live-pulse{50%{box-shadow:0 0 14px #ffaa0088}}
+        @media(max-width:420px){.cyber-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+        </style>"""
+        + '<div class="cyber-wrap">'
+        + '<div class="cyber-title">⚡ LIVE OPS ARENA · EVENT-DRIVEN STAGE STATUS ⚡</div>'
+        + f'<div class="command-deck">{manager}</div>'
+        + f'<div class="cyber-grid">{nodes}</div>'
+        + f'<div class="term" role="log" aria-label="Live event log">{log_html}</div>'
+        + "</div>"
+    )
+
+
+def entry_status(entry: dict) -> str:
+    """Map persisted pipeline status to an explicit, non-inferred UI label."""
+    return ENTRY_STATUSES.get(entry.get("status"), "Other recorded status")
+
+
+def registry_counts(entries: list) -> dict:
+    """Count only explicit statuses present in locally stored live entries."""
+    counts = {"drafts": 0, "published": 0, "rejected": 0, "other": 0}
+    for entry in entries:
+        status = entry.get("status")
+        bucket = {
+            "pending_approval": "drafts",
+            "live": "published",
+            "rejected": "rejected",
+        }.get(status, "other")
+        counts[bucket] += 1
+    return counts
