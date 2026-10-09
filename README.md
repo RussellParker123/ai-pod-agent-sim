@@ -20,6 +20,82 @@ Python multi-agent simulation for original AI-art print-on-demand workflows (mug
 - It does **not** copy Etsy designs.
 - It does **not** auto-post live listings by default.
 
+## StarNet on macOS: safe first run
+
+Start with StarNet operating a **clean local copy**, not an HTTP bridge or live
+integration. Give it the project folder rather than pasting the codebase.
+This workflow requires no runtime changes.
+
+### Safety checklist (before granting access)
+
+- [ ] **Clean copy:** use a separate checkout without existing `data/` contents;
+  old recycling requests can add candidates beyond the requested batch size.
+- [ ] **Remove secrets:** keep `.env`, `.secrets/`, OAuth files, private keys and
+  `.streamlit/secrets.toml` out of the copy; remove live credentials from the
+  process environment without displaying them. Offline imports load `.env` if
+  present, so disabling live flags alone is not enough.
+- [ ] **Verify offline readiness:** prepare Python and a virtual environment
+  yourself using Quickstart step 1 before the restricted session. Inspect
+  `app/sim/run_simulation.py` and confirm the default mock path needs no
+  credentials. If prerequisites are missing, stop; do not let StarNet install
+  or upgrade packages during this task.
+- [ ] **Block live actions:** no Etsy, Printful, OpenAI, publishing, live drafts,
+  fulfillment or spending. Never use `--etsy-mode`, `--real`, `--draft-only`,
+  `--publish-run` or `--yes`; do not launch the dashboard, OAuth wizard or live
+  pipeline.
+- [ ] **Limit permissions:** grant only this copy, necessary file reads and
+  approval-gated local commands. Deny secrets, browser, plugins, external
+  services, network and broad filesystem access; no `sudo` or Full Disk Access.
+  Use the equivalent controls in your installed StarNet version. A prompt is
+  not a security barrier: enforce outbound blocking with a sandbox/firewall
+  that covers StarNet and its child processes, not just inbound connections.
+  Strict no-network use also requires a local StarNet model/backend; if your
+  setup needs a cloud model or cannot enforce these limits, stop.
+- [ ] **One tiny task:** approve exactly one batch with `--batch-size 1 --seed 7`
+  using the prompt below. No retries, parallel batches or scheduled runs.
+- [ ] **Watch for red flags:** stop on secret access, connections, package
+  installs, unexpected writes or changes to approval/compliance rules.
+- [ ] **Rollback point:** record the starting commit and keep a snapshot of the
+  sanitized copy; Git alone does not back up ignored `data/` outputs.
+- [ ] **Unsure?** use a disposable copy with no access to your main workspace,
+  accounts or macOS Keychain. Do not broaden permissions to fix a blocked run.
+- [ ] **Review before trusting:** check the command, exit status, output JSON,
+  network-blocking evidence and changed files. Simulated images, sales and
+  revenue are synthetic, not evidence of real artwork quality or demand.
+
+### Paste this first prompt into StarNet
+
+```text
+Inspect this clean AI POD Agent Simulation copy on macOS. Read README.md
+and locate the offline CLI and its imports. Explain the command and expected
+writes before execution; wait for my approval of that command.
+
+Rules: no network, external services, browser or plugins; no Etsy, Printful,
+OpenAI, publishing, live drafts, fulfillment or spending. Do not read, print,
+copy or modify .env, .secrets, keys, tokens, OAuth files or other credentials.
+No installs, upgrades, destructive commands or code/config edits without my
+explicit approval. Do not change approval, compliance, pricing or spending rules.
+
+Only if secrets are absent, dependencies are ready and outbound blocking is
+enforced, run exactly once from the project root:
+.venv/bin/python -B -m app.sim.run_simulation --batch-size 1 --seed 7
+No extra flags, retries or other entry points. Allow only the simulator's
+data/ outputs (run JSON, Etsy-state log, team/recycling state and temporary
+state files); no other file writes.
+
+Report the command, exit status, output path, designs processed, manager
+GREENLIGHT/HOLD/BLOCK counts, recycling/review outcomes and changed files.
+Label all sales/revenue synthetic. Explain the evidence for offline execution;
+do not claim it from success alone. If unclear, unsafe or blocked, stop and
+report missing prerequisites/permissions instead of guessing or claiming success.
+```
+
+The command creates `data/run_<timestamp>.json`, `data/etsy_api.log`,
+`data/team_state.json` and `data/recycling_queue.json`; the log filename does
+not mean Etsy was contacted. Manager GREENLIGHT means simulation approval,
+not human authorization to publish. Review this one run before approving
+any further task; live integration is a separate, explicitly approved setup.
+
 ## Quickstart
 
 1. Create virtual environment and install dependencies:
