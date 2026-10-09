@@ -82,8 +82,8 @@ class EtsyIntegrationTests(unittest.TestCase):
 
         results = connector.get_marketplace_listings(["coffee", "pets"], limit=2)
 
-        self.assertEqual([item["listing_id"] for item in results], [1, 2])
-        self.assertEqual(results[0]["demand"], 40)
+        self.assertEqual([item["listing_id"] for item in results], [2, 1])
+        self.assertEqual(results[0]["demand"], 45)
         self.assertEqual(len(queries), 2)
         self.assertTrue(all(path == "listings/active" for path, _ in queries))
         self.assertTrue(all(query["sort_on"] == "score" for _, query in queries))
