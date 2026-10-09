@@ -1,10 +1,12 @@
 from app.live_ops_presentation import (
     MANAGER_NODE,
     STAGE_NODES,
+    STAGE_LOCATIONS,
     entry_status,
     registry_counts,
     render_live_console,
 )
+from app.sim.characters import DrCypher
 from pathlib import Path
 
 from streamlit.testing.v1 import AppTest
@@ -32,6 +34,26 @@ def test_live_console_empty_state_and_unknown_status_are_safe():
     assert "standing by..." in markup
     assert 'aria-label="TREND SCANNER: IDLE"' in markup
     assert "None" not in markup
+
+
+def test_live_console_shows_character_avatar_and_live_event_dialogue_safely():
+    character = DrCypher().to_dict()
+    character.update(
+        status="active",
+        activity="Scouting <script>alert(1)</script>",
+        line="Reviewing <design>",
+    )
+
+    markup = render_live_console({}, [], character)
+
+    assert 'class="cypher-presence active"' in markup
+    assert 'class="cypher-avatar" role="img" aria-label="Dr. Cypher"' in markup
+    assert "<svg" in markup
+    assert "Scouting &lt;script&gt;alert(1)&lt;/script&gt;" in markup
+    assert "Reviewing &lt;design&gt;" in markup
+    assert "<script>" not in markup
+    assert STAGE_LOCATIONS["trend"] == "trend"
+    assert STAGE_LOCATIONS["manager"] == "approval"
 
 
 def test_registry_counts_only_explicit_local_statuses_and_handles_missing_fields():
