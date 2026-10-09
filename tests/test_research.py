@@ -24,6 +24,31 @@ def test_research_ranks_and_briefs_departments():
     assert "retro" in d[0].prompt
 
 
+def test_marketplace_research_informs_original_brief_without_copying_listing():
+    class MarketplaceConnector:
+        def get_marketplace_listings(self, niches, limit=10):
+            return [
+                {
+                    "title": "Exact competitor slogan",
+                    "tags": ["retro", "coffee"],
+                    "demand": 100,
+                }
+            ]
+
+        def get_best_sellers(self, limit=10):
+            raise AssertionError("marketplace results should take precedence")
+
+    research = research_agent(["coffee culture"], etsy_connector=MarketplaceConnector())
+    design = Design("D1", "coffee culture", 0.5)
+    apply_research([design], research)
+    prompt_agent([design], research=research)
+
+    assert research["source"] == "etsy_marketplace"
+    assert design.style_keywords == ["retro"]
+    assert "Exact competitor slogan" not in design.prompt
+    assert "high-level inspiration" in design.prompt
+
+
 def test_research_falls_back_to_simulation():
     r = research_agent(["pet lovers"])
     assert r["source"] == "simulated" and r["best_sellers"]

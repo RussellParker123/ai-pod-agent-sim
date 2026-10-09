@@ -41,6 +41,53 @@ class EtsyIntegrationTests(unittest.TestCase):
             [{"term": "coffee", "count": 2}, {"term": "gift", "count": 1}],
         )
 
+    def test_marketplace_search_deduplicates_and_ranks_across_niches(self):
+        connector = EtsyConnector("123", "key", "secret", access_token="token")
+        queries = []
+
+        def get(path, query):
+            queries.append((path, query))
+            if query["keywords"] == "coffee":
+                return {
+                    "results": [
+                        {
+                            "listing_id": 1,
+                            "title": "Retro coffee mug",
+                            "tags": ["retro", "coffee"],
+                            "views": 20,
+                            "num_favorers": 4,
+                        }
+                    ]
+                }
+            return {
+                "results": [
+                    {
+                        "listing_id": 1,
+                        "title": "Retro coffee mug",
+                        "tags": ["retro", "coffee"],
+                        "views": 20,
+                        "num_favorers": 4,
+                    },
+                    {
+                        "listing_id": 2,
+                        "title": "Minimal pet tote",
+                        "tags": ["minimalist", "pet"],
+                        "views": 40,
+                        "num_favorers": 1,
+                    },
+                ]
+            }
+
+        connector._get = get
+
+        results = connector.get_marketplace_listings(["coffee", "pets"], limit=2)
+
+        self.assertEqual([item["listing_id"] for item in results], [1, 2])
+        self.assertEqual(results[0]["demand"], 40)
+        self.assertEqual(len(queries), 2)
+        self.assertTrue(all(path == "listings/active" for path, _ in queries))
+        self.assertTrue(all(query["sort_on"] == "score" for _, query in queries))
+
     def test_trend_agent_falls_back_when_etsy_fails(self):
         class BrokenConnector:
             def get_top_trending_search_terms(self, limit=10):
